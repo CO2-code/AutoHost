@@ -722,7 +722,7 @@ export class CnCNetAutoHostBot {
       mapSha1, gameOptions, difficulty,
     ];
 
-    this.sendRaw(`PRIVMSG ${this.config.announcementChannel} :\x01GAME ${fields.join(';')}\x01`);
+    this.sendRaw(`NOTICE ${this.config.announcementChannel} :\x01GAME ${fields.join(';')}\x01`);
   }
 
   private handlePlayerJoin(room: HostedRoom, nick: string, hostmask: string) {
