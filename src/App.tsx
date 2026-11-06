@@ -1632,10 +1632,10 @@ export default function App() {
                   type="text"
                   value={configGameVersion}
                   onChange={(e) => setConfigGameVersion(e.target.value)}
-                  placeholder="Exact contents of the RA1 client version file"
+                  placeholder="Value from [DTA] Version in the client version file"
                   className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-red-500"
                 />
-                <p className="text-[11px] text-slate-500 mt-1">Required for XNA game listings. Use the exact version string from your installed CnCNet RA1 client; do not guess it.</p>
+                <p className="text-[11px] text-slate-500 mt-1">Required for XNA game listings. Copy the Version value under [DTA] from the file named version in your RA1 client folder.</p>
               </div>
               <div>
                 <label className="block font-bold text-slate-300 mb-1">Bot Nickname on CnCNet IRC</label>
