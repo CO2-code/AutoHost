@@ -2,6 +2,7 @@ import net from 'net';
 import tls from 'tls';
 import fs from 'fs';
 import path from 'path';
+import { createHash } from 'crypto';
 
 export interface GameDefinition {
   code: 'RA';
@@ -9,7 +10,7 @@ export interface GameDefinition {
   packageRepo: 'https://github.com/CnCNet/cncnet-ra-client-package';
   lobbyChannel: string;
   announcementChannel: string;
-  announcementChannelKey: string;
+  lobbyChannelKey: string;
   defaultMaps: string[];
   defaultTitle: string;
   defaultMaxPlayers: number;
@@ -21,41 +22,12 @@ export const RA1_DEFINITION: GameDefinition = {
   packageRepo: 'https://github.com/CnCNet/cncnet-ra-client-package',
   lobbyChannel: '#cncnet-ra',
   announcementChannel: '#cncnet-ra-games',
-  announcementChannelKey: 'ra1-derp',
-  defaultMaps: [
-    'Path Beyond (2-4)',
-    'North by Northwest (2-4)',
-    'Keep off the Grass (2-4)',
-    'Behind the Veil (2-4)',
-    'Casserole (2-6)',
-    'Bullseye (2-4)',
-    'Marooned (2-4)',
-    'River Raid (2-4)',
-    'Gold Rush (2-4)',
-    'Middle Ground (2-4)',
-    'Island Hop (2-4)',
-    'Coastal Influence (2-4)',
-  ],
+  lobbyChannelKey: 'ra1-derp',
+  defaultMaps: ['[2] Equal Opportunity'],
+
   defaultTitle: '[RA1] CnCNet AutoHost - Fast 1v1/2v2 [All Welcome]',
   defaultMaxPlayers: 4,
 };
-
-export interface TunnelNode {
-  name: string;
-  region: string;
-  host: string;
-  port: number;
-}
-
-export const CNCNET_TUNNELS: TunnelNode[] = [
-  { name: 'Frankfurt (EU)', region: 'Europe', host: 'tunnel.cncnet.org', port: 50000 },
-  { name: 'New York (US-East)', region: 'North America', host: 'ny.cncnet.org', port: 50000 },
-  { name: 'San Jose (US-West)', region: 'North America', host: 'sj.cncnet.org', port: 50000 },
-  { name: 'London (UK)', region: 'Europe', host: 'uk.cncnet.org', port: 50000 },
-  { name: 'Amsterdam (EU)', region: 'Europe', host: 'nl.cncnet.org', port: 50000 },
-  { name: 'Singapore (Asia)', region: 'Asia-Pacific', host: 'sg.cncnet.org', port: 50000 },
-  { name: 'Direct P2P', region: 'Local / Peer-to-Peer', host: '0.0.0.0', port: 0 },
-];
 
 export interface RoomPlayer {
   nick: string;
@@ -73,11 +45,9 @@ export interface HostedRoom {
   gameTitle: string;
   channel: string;
   announcementChannel: string;
-  announcementChannelKey: string;
   lobbyChannel: string;
   password?: string;
   maxPlayers: number;
-  minPlayersToLaunch: number;
   currentMap: string;
   mapPool: string[];
   gameSpeed: number; // 1 to 6 (default 5 for RA1)
@@ -87,17 +57,11 @@ export interface HostedRoom {
   crates: boolean;
   fogOfWar: boolean;
   shroud: boolean;
-  tunnel: TunnelNode;
-  status: 'WAITING' | 'COUNTDOWN' | 'PLAYING' | 'FINISHED';
-  countdownSeconds: number | null;
-  countdownTimerId?: any;
+  status: 'WAITING';
   players: RoomPlayer[];
   mapVotes: Record<string, number>;
   createdAt: string;
   lastActivityAt: string;
-  matchStartedAt?: string;
-  autoRehostOnFinish: boolean;
-  autoLaunchWhenReady: boolean;
 }
 
 export interface CnCNetBotConfig {
@@ -108,7 +72,6 @@ export interface CnCNetBotConfig {
   nick: string;
   realName: string;
   announcementChannel: string;
-  announcementChannelKey: string;
   autoReconnect: boolean;
   reconnectIntervalSec: number;
   maxReconnectIntervalSec: number;
@@ -119,7 +82,7 @@ export interface CnCNetBotConfig {
 export interface HostingLogEntry {
   id: string;
   timestamp: string;
-  type: 'ROOM_CREATED' | 'ROOM_CLOSED' | 'PLAYER_JOIN' | 'PLAYER_PART' | 'PLAYER_READY' | 'COUNTDOWN_STARTED' | 'COUNTDOWN_CANCELLED' | 'MATCH_LAUNCHED' | 'MAP_CHANGED' | 'SYSTEM' | 'ERROR';
+  type: 'ROOM_CREATED' | 'ROOM_CLOSED' | 'PLAYER_JOIN' | 'PLAYER_PART' | 'PLAYER_READY' | 'MAP_CHANGED' | 'SYSTEM' | 'ERROR';
   roomId?: string;
   channel?: string;
   nick?: string;
@@ -165,7 +128,6 @@ export class CnCNetAutoHostBot {
 
   private stats = {
     totalRoomsCreated: 0,
-    totalMatchesLaunched: 0,
     totalPlayersServed: 0,
     totalReconnects: 0,
     uptimeSeconds: 0,
@@ -185,12 +147,11 @@ export class CnCNetAutoHostBot {
       nick: 'RA1_AutoHost',
       realName: 'CnCNet Red Alert 1 AutoHost Bot',
       announcementChannel: '#cncnet-ra-games',
-      announcementChannelKey: 'ra1-derp',
       autoReconnect: true,
       reconnectIntervalSec: 5,
       maxReconnectIntervalSec: 60,
       announcementIntervalSec: 15,
-      welcomeMessage: 'Welcome to this RA1 auto-hosted room! Type !ready when prepared. Type !maps to vote for next map.',
+      welcomeMessage: 'Welcome to this RA1 IRC room! Type !maps to view maps and !vote to vote for the next map.',
       ...customConfig,
     };
 
@@ -222,8 +183,7 @@ export class CnCNetAutoHostBot {
     this.createRoom({
       gameTitle: '[RA1] CnCNet AutoHost - Fast 1v1/2v2 [All Welcome]',
       maxPlayers: 4,
-      minPlayersToLaunch: 2,
-      currentMap: 'Path Beyond (2-4)',
+      currentMap: '[2] Equal Opportunity',
       gameSpeed: 5,
       startingCredits: 10000,
       bases: true,
@@ -231,12 +191,9 @@ export class CnCNetAutoHostBot {
       crates: false,
       fogOfWar: true,
       shroud: true,
-      tunnel: CNCNET_TUNNELS[0],
-      autoLaunchWhenReady: true,
-      autoRehostOnFinish: true,
     });
 
-    this.logSystem(`CnCNet RA1 AutoHost Bot initialized. Target: ${this.config.announcementChannel} (key: ${this.config.announcementChannelKey})`);
+    this.logSystem(`CnCNet RA1 IRC room bot initialized. Game-list channel: ${this.config.announcementChannel}`);
   }
 
   // ======================== CONFIG & STATUS ========================
@@ -257,7 +214,6 @@ export class CnCNetAutoHostBot {
       port: this.config.port,
       nick: this.currentNick,
       announcementChannel: this.config.announcementChannel,
-      announcementChannelKey: this.config.announcementChannelKey,
       connectedSince: this.connectedSince ? this.connectedSince.toISOString() : null,
       reconnectAttempts: this.reconnectAttempts,
       nextReconnectAt: this.nextReconnectAt ? this.nextReconnectAt.toISOString() : null,
@@ -439,6 +395,10 @@ export class CnCNetAutoHostBot {
 
   // ======================== IRC LINE PARSER ========================
 
+  private getRoomChannelKey(room: HostedRoom): string {
+    return room.password || createHash('sha1').update(room.channel).digest('hex').substring(0, 10);
+  }
+
   private handleIrcLine(line: string) {
     this.logActivity('INCOMING', line);
 
@@ -485,13 +445,10 @@ export class CnCNetAutoHostBot {
     // 001 RPL_WELCOME - Registered
     if (command === '001') {
       this.state = 'REGISTERED';
-      this.logHosting('SYSTEM', `Registered on CnCNet IRC as '${this.currentNick}'. Joining ${this.config.announcementChannel} with key '${this.config.announcementChannelKey}'...`);
+      this.logHosting('SYSTEM', `Registered on CnCNet IRC as '${this.currentNick}'. Joining RA1 lobby and game-list channels...`);
 
-      // 1. Join main games announcement channel with password 'ra1-derp'
-      this.sendRaw(`JOIN ${this.config.announcementChannel} ${this.config.announcementChannelKey}`);
-
-      // 2. Also join RA1 general lobby
-      this.sendRaw(`JOIN ${RA1_DEFINITION.lobbyChannel}`);
+      this.sendRaw(`JOIN ${RA1_DEFINITION.lobbyChannel} ${RA1_DEFINITION.lobbyChannelKey}`);
+      this.sendRaw(`JOIN ${this.config.announcementChannel}`);
 
       // 3. Join all active room channels
       this.joinAllActiveRooms();
@@ -510,8 +467,7 @@ export class CnCNetAutoHostBot {
     // 475 ERR_BADCHANNELKEY - If key failed
     if (command === '475') {
       const targetChan = params[1] || '';
-      this.logHosting('ERROR', `Cannot join ${targetChan}: Incorrect channel key (+k). Re-trying with key '${this.config.announcementChannelKey}'...`);
-      this.sendRaw(`JOIN ${this.config.announcementChannel} ${this.config.announcementChannelKey}`);
+      this.logHosting('ERROR', `Cannot join ${targetChan}: IRC rejected the channel key. Check the channel/key configuration.`);
       return;
     }
 
@@ -522,7 +478,7 @@ export class CnCNetAutoHostBot {
       // Check if joined channel is the announcement channel
       if (joinedChannel === this.config.announcementChannel.toLowerCase()) {
         if (senderNick.toLowerCase() === this.currentNick.toLowerCase()) {
-          this.logHosting('SYSTEM', `Bot successfully joined ${this.config.announcementChannel} with key '${this.config.announcementChannelKey}'!`);
+          this.logHosting('SYSTEM', `Bot successfully joined ${this.config.announcementChannel} without a key!`);
           // Broadcast rooms to #cncnet-ra-games
           for (const room of this.rooms.values()) {
             this.broadcastGameAnnouncement(room);
@@ -539,11 +495,9 @@ export class CnCNetAutoHostBot {
               roomId: room.id,
               channel: room.channel,
             });
+            this.sendRaw(`MODE ${room.channel} +klnNs ${this.getRoomChannelKey(room)} ${room.maxPlayers}`);
             this.sendRoomTopic(room);
-            this.sendRaw(`MODE ${room.channel} +tn`);
-            if (room.password) {
-              this.sendRaw(`MODE ${room.channel} +k ${room.password}`);
-            }
+            this.broadcastGameAnnouncement(room);
           } else {
             this.handlePlayerJoin(room, senderNick, senderHostmask);
           }
@@ -567,6 +521,29 @@ export class CnCNetAutoHostBot {
         if (matchesRoom) {
           this.handlePlayerLeave(room, targetNick, trailing || 'Left RA1 match room');
         }
+      }
+      return;
+    }
+
+    if (command === '353') {
+      const channel = (params[2] || '').toLowerCase();
+      const room = Array.from(this.rooms.values()).find((item) => item.channel.toLowerCase() === channel);
+      if (room && trailing) {
+        for (const entry of trailing.split(/\s+/)) {
+          const nick = entry.replace(/^[@+%&~]+/, '');
+          if (nick && nick.toLowerCase() !== this.currentNick.toLowerCase()) {
+            this.handlePlayerJoin(room, nick, '');
+          }
+        }
+      }
+      return;
+    }
+
+    if (command === 'NOTICE') {
+      const target = params[0] || '';
+      const text = trailing.trim();
+      if (target.toLowerCase() === this.currentNick.toLowerCase() && text.startsWith('\x01') && text.endsWith('\x01')) {
+        this.handleCtcpQuery(senderNick, text.slice(1, -1));
       }
       return;
     }
@@ -608,8 +585,8 @@ export class CnCNetAutoHostBot {
   // ======================== RA1 ROOM MANAGEMENT ========================
 
   public createRoom(options: Partial<HostedRoom>): HostedRoom {
-    const randomSuffix = Math.floor(Math.random() * 9000 + 1000);
-    const channelName = options.channel || `#cncnet-ra-game-${randomSuffix}`;
+    const randomSuffix = Math.floor(Math.random() * 9000000 + 1000000);
+    const channelName = options.channel || `#cncnet-ra-game${randomSuffix}`;
 
     const newRoom: HostedRoom = {
       id: Math.random().toString(36).substring(2, 9),
@@ -617,11 +594,9 @@ export class CnCNetAutoHostBot {
       gameTitle: options.gameTitle || RA1_DEFINITION.defaultTitle,
       channel: channelName,
       announcementChannel: this.config.announcementChannel,
-      announcementChannelKey: this.config.announcementChannelKey,
       lobbyChannel: RA1_DEFINITION.lobbyChannel,
       password: options.password || undefined,
       maxPlayers: options.maxPlayers || RA1_DEFINITION.defaultMaxPlayers,
-      minPlayersToLaunch: options.minPlayersToLaunch || 2,
       currentMap: options.currentMap || RA1_DEFINITION.defaultMaps[0],
       mapPool: options.mapPool && options.mapPool.length > 0 ? options.mapPool : [...RA1_DEFINITION.defaultMaps],
       gameSpeed: options.gameSpeed || 5,
@@ -631,24 +606,20 @@ export class CnCNetAutoHostBot {
       crates: options.crates !== undefined ? options.crates : false,
       fogOfWar: options.fogOfWar !== undefined ? options.fogOfWar : true,
       shroud: options.shroud !== undefined ? options.shroud : true,
-      tunnel: options.tunnel || CNCNET_TUNNELS[0],
       status: 'WAITING',
-      countdownSeconds: null,
       players: [],
       mapVotes: {},
       createdAt: new Date().toISOString(),
       lastActivityAt: new Date().toISOString(),
-      autoRehostOnFinish: options.autoRehostOnFinish !== undefined ? options.autoRehostOnFinish : true,
-      autoLaunchWhenReady: options.autoLaunchWhenReady !== undefined ? options.autoLaunchWhenReady : true,
     };
 
     this.rooms.set(newRoom.id, newRoom);
     this.stats.totalRoomsCreated++;
 
-    this.logHosting('ROOM_CREATED', `Spawned RA1 room '${newRoom.gameTitle}' on ${newRoom.channel}`, {
+    this.logHosting('ROOM_CREATED', `Created RA1 IRC room '${newRoom.gameTitle}' on ${newRoom.channel}`, {
       roomId: newRoom.id,
       channel: newRoom.channel,
-      details: `Map: ${newRoom.currentMap}, Max: ${newRoom.maxPlayers}, Tunnel: ${newRoom.tunnel.name}`,
+      details: `Map: ${newRoom.currentMap}, Max: ${newRoom.maxPlayers}`,
     });
 
     if (this.state === 'REGISTERED') {
@@ -663,14 +634,10 @@ export class CnCNetAutoHostBot {
     const room = this.rooms.get(roomId);
     if (!room) return;
 
-    if (room.countdownTimerId) {
-      clearInterval(room.countdownTimerId);
-      room.countdownTimerId = undefined;
-    }
-
     this.sendRoomMessage(room, `[HOST] Red Alert 1 room is being closed: ${reason}`);
 
     if (this.state === 'REGISTERED') {
+      this.broadcastGameAnnouncement(room, true);
       this.sendRaw(`PART ${room.channel} :${reason}`);
     }
 
@@ -688,7 +655,6 @@ export class CnCNetAutoHostBot {
       this.sendRoomMessage(room, `[MAP] Map changed to: ${room.currentMap}`);
     }
     if (updates.maxPlayers) room.maxPlayers = updates.maxPlayers;
-    if (updates.minPlayersToLaunch) room.minPlayersToLaunch = updates.minPlayersToLaunch;
     if (updates.gameSpeed) room.gameSpeed = updates.gameSpeed;
     if (updates.startingCredits) room.startingCredits = updates.startingCredits;
     if (updates.bases !== undefined) room.bases = updates.bases;
@@ -696,10 +662,7 @@ export class CnCNetAutoHostBot {
     if (updates.crates !== undefined) room.crates = updates.crates;
     if (updates.fogOfWar !== undefined) room.fogOfWar = updates.fogOfWar;
     if (updates.shroud !== undefined) room.shroud = updates.shroud;
-    if (updates.tunnel) room.tunnel = updates.tunnel;
     if (updates.password !== undefined) room.password = updates.password || undefined;
-    if (updates.autoLaunchWhenReady !== undefined) room.autoLaunchWhenReady = updates.autoLaunchWhenReady;
-    if (updates.autoRehostOnFinish !== undefined) room.autoRehostOnFinish = updates.autoRehostOnFinish;
 
     this.sendRoomTopic(room);
     this.broadcastGameAnnouncement(room);
@@ -713,20 +676,11 @@ export class CnCNetAutoHostBot {
 
   private joinRoomChannel(room: HostedRoom) {
     this.logHosting('SYSTEM', `Joining RA1 room ${room.channel}...`);
-    // Ensure joined to #cncnet-ra-games with key ra1-derp
-    this.sendRaw(`JOIN ${this.config.announcementChannel} ${this.config.announcementChannelKey}`);
-
-    if (room.password) {
-      this.sendRaw(`JOIN ${room.channel} ${room.password}`);
-    } else {
-      this.sendRaw(`JOIN ${room.channel}`);
-    }
+    this.sendRaw(`JOIN ${room.channel} ${this.getRoomChannelKey(room)}`);
   }
 
   private sendRoomTopic(room: HostedRoom) {
-    const statusLabel = room.status === 'PLAYING' ? 'IN MATCH' : room.status === 'COUNTDOWN' ? 'STARTING' : 'OPEN';
-    const topic = `[CnCNet RA1] ${room.gameTitle} | Map: ${room.currentMap} | Players: ${room.players.length}/${room.maxPlayers} | Speed: ${room.gameSpeed} | Credits: $${room.startingCredits} | Tunnel: ${room.tunnel.name} | Status: ${statusLabel}`;
-    this.sendRaw(`TOPIC ${room.channel} :${topic}`);
+    this.sendRaw(`TOPIC ${room.channel} :B;ra`);
   }
 
   private sendRoomMessage(room: HostedRoom, text: string) {
@@ -742,21 +696,33 @@ export class CnCNetAutoHostBot {
     });
   }
 
-  /**
-   * Broadcast RA1 match announcement to #cncnet-ra-games (with key ra1-derp)
-   * Compatible with CnCNet/cncnet-ra-client-package!
-   */
-  public broadcastGameAnnouncement(room: HostedRoom) {
+  public broadcastGameAnnouncement(room: HostedRoom, closed = false) {
     if (this.state !== 'REGISTERED') return;
 
-    const hasPw = room.password ? '1' : '0';
-    const isPlaying = room.status === 'PLAYING' ? '1' : '0';
+    const gameVersion = process.env.CNCNET_RA1_GAME_VERSION?.trim() || '0.1.2';
+    const configuredMapName = process.env.CNCNET_RA1_MAP_NAME?.trim();
+    const isSampleMap = room.currentMap === '[2] Equal Opportunity' && (!configuredMapName || configuredMapName === '[2] Equal Opportunity');
+    const mapSha1 = process.env.CNCNET_RA1_MAP_SHA1?.trim() || (isSampleMap ? 'cd454a0a7849d65bbc4a78e49ad7fbae5323623d' : '');
+    if (!mapSha1) {
+      this.logHosting('ERROR', `Game-list advertisement skipped: no SHA-1 configured for map '${room.currentMap}'. Set CNCNET_RA1_MAP_SHA1 to that map's exact hash.`);
+      return;
+    }
 
-    // CnCNet Red Alert 1 Client Standard Notice Announcement Format:
-    // GAME RA;<roomChannel>;<title>;<map>;<players>;<max>;<hasPassword>;<hostNick>;<tunnelHost>;<tunnelPort>;<isPlaying>
-    const announcementPayload = `GAME RA;${room.channel};${room.gameTitle};${room.currentMap};${room.players.length};${room.maxPlayers};${hasPw};${this.currentNick};${room.tunnel.host};${room.tunnel.port};${isPlaying}`;
+    const flags = `0${room.password ? '1' : '0'}${closed ? '1' : '0'}00`;
+    const players = room.players.map((player) => player.nick).join(',');
+    const tunnel = '[DYN]';
+    const mapName = configuredMapName || room.currentMap;
+    const gameMode = process.env.CNCNET_RA1_GAME_MODE || 'Standard';
+    const skill = process.env.CNCNET_RA1_SKILL || '0';
+    const gameOptions = process.env.CNCNET_RA1_GAME_OPTIONS || '';
+    const difficulty = process.env.CNCNET_RA1_DIFFICULTY || '-1';
+    const fields = [
+      'B', gameVersion, String(room.maxPlayers), room.channel, room.gameTitle,
+      flags, players, mapName, gameMode, tunnel, '0', skill,
+      mapSha1, gameOptions, difficulty,
+    ];
 
-    this.sendRaw(`NOTICE ${this.config.announcementChannel} :${announcementPayload}`);
+    this.sendRaw(`PRIVMSG ${this.config.announcementChannel} :\x01GAME ${fields.join(';')}\x01`);
   }
 
   private handlePlayerJoin(room: HostedRoom, nick: string, hostmask: string) {
@@ -795,7 +761,7 @@ export class CnCNetAutoHostBot {
 
     // Welcome message and rules
     this.sendRoomMessage(room, `Welcome ${nick}! [Slot ${newSlot}/${room.maxPlayers}] | Map: ${room.currentMap} | Speed: ${room.gameSpeed} | Credits: $${room.startingCredits}`);
-    this.sendRoomMessage(room, `Type !ready when you are prepared to launch. (Commands: !maps, !vote <map>, !status, !help)`);
+    this.sendRoomMessage(room, `Commands: !ready, !unready, !maps, !vote <map>, !status, !help`);
 
     this.sendRoomTopic(room);
     this.broadcastGameAnnouncement(room);
@@ -814,10 +780,6 @@ export class CnCNetAutoHostBot {
       });
 
       this.sendRoomMessage(room, `[LOBBY] ${nick} departed (${room.players.length}/${room.maxPlayers} remaining).`);
-
-      if (room.status === 'COUNTDOWN') {
-        this.cancelLaunchCountdown(room, `Player ${nick} left during countdown.`);
-      }
 
       this.sendRoomTopic(room);
       this.broadcastGameAnnouncement(room);
@@ -845,7 +807,6 @@ export class CnCNetAutoHostBot {
           nick: senderNick,
         });
 
-        this.checkAutoLaunchCondition(room);
         break;
       }
 
@@ -854,9 +815,6 @@ export class CnCNetAutoHostBot {
         if (!player) return;
         player.isReady = false;
         this.sendRoomMessage(room, `[UNREADY] ${senderNick} is no longer ready.`);
-        if (room.status === 'COUNTDOWN') {
-          this.cancelLaunchCountdown(room, `${senderNick} unreadied.`);
-        }
         break;
       }
 
@@ -912,7 +870,7 @@ export class CnCNetAutoHostBot {
       case '!info': {
         const readyList = room.players.map((p) => `${p.nick} ${p.isReady ? '[✓ Ready]' : '[...Waiting]'}`).join(', ');
         this.sendRoomMessage(room, `[STATUS] Map: ${room.currentMap} | Players (${room.players.length}/${room.maxPlayers}): ${readyList || 'None'}`);
-        this.sendRoomMessage(room, `Settings: Speed ${room.gameSpeed} | Credits $${room.startingCredits} | Tunnel: ${room.tunnel.name}`);
+        this.sendRoomMessage(room, `Settings: Speed ${room.gameSpeed} | Credits ${room.startingCredits}`);
         break;
       }
 
@@ -927,134 +885,7 @@ export class CnCNetAutoHostBot {
         break;
       }
 
-      case '!start':
-      case '!launch': {
-        this.startLaunchCountdown(room, `Manual launch triggered by ${senderNick}`);
-        break;
-      }
-
-      case '!abort':
-      case '!stop': {
-        this.cancelLaunchCountdown(room, `Countdown aborted by ${senderNick}`);
-        break;
-      }
     }
-  }
-
-  // ======================== AUTO LAUNCH COUNTDOWN ========================
-
-  public checkAutoLaunchCondition(room: HostedRoom) {
-    if (!room.autoLaunchWhenReady) return;
-    if (room.status !== 'WAITING') return;
-
-    const allReady = room.players.length >= room.minPlayersToLaunch && room.players.every((p) => p.isReady);
-    if (allReady) {
-      this.startLaunchCountdown(room, `All ${room.players.length} players are READY!`);
-    }
-  }
-
-  public startLaunchCountdown(room: HostedRoom, triggerReason: string) {
-    if (room.status === 'COUNTDOWN' || room.status === 'PLAYING') return;
-
-    room.status = 'COUNTDOWN';
-    room.countdownSeconds = 5;
-
-    this.logHosting('COUNTDOWN_STARTED', `RA1 launch countdown initiated in ${room.channel} (${triggerReason})`, {
-      roomId: room.id,
-      channel: room.channel,
-    });
-
-    this.sendRoomMessage(room, `════════════════════════════════════════════════════`);
-    this.sendRoomMessage(room, `⚡ ALL COMMANDERS READY! Launching Red Alert 1 in 5 seconds...`);
-    this.sendRoomMessage(room, `(Type !unready to abort countdown)`);
-    this.sendRoomMessage(room, `════════════════════════════════════════════════════`);
-
-    this.sendRoomTopic(room);
-    this.broadcastGameAnnouncement(room);
-
-    room.countdownTimerId = setInterval(() => {
-      if (room.countdownSeconds === null) {
-        clearInterval(room.countdownTimerId);
-        room.countdownTimerId = undefined;
-        return;
-      }
-
-      room.countdownSeconds--;
-
-      if (room.countdownSeconds > 0) {
-        this.sendRoomMessage(room, `Launching in ${room.countdownSeconds}...`);
-      } else {
-        clearInterval(room.countdownTimerId);
-        room.countdownTimerId = undefined;
-        this.executeMatchLaunch(room);
-      }
-    }, 1000);
-  }
-
-  public cancelLaunchCountdown(room: HostedRoom, reason: string) {
-    if (room.status !== 'COUNTDOWN') return;
-
-    if (room.countdownTimerId) {
-      clearInterval(room.countdownTimerId);
-      room.countdownTimerId = undefined;
-    }
-
-    room.status = 'WAITING';
-    room.countdownSeconds = null;
-
-    this.logHosting('COUNTDOWN_CANCELLED', `RA1 launch countdown aborted in ${room.channel}: ${reason}`, {
-      roomId: room.id,
-      channel: room.channel,
-    });
-
-    this.sendRoomMessage(room, `⚠️ LAUNCH ABORTED: ${reason}`);
-    this.sendRoomTopic(room);
-    this.broadcastGameAnnouncement(room);
-  }
-
-  private executeMatchLaunch(room: HostedRoom) {
-    room.status = 'PLAYING';
-    room.countdownSeconds = null;
-    room.matchStartedAt = new Date().toISOString();
-    this.stats.totalMatchesLaunched++;
-
-    this.logHosting('MATCH_LAUNCHED', `RED ALERT 1 MATCH LAUNCHED in ${room.channel} with ${room.players.length} players!`, {
-      roomId: room.id,
-      channel: room.channel,
-      details: `Map: ${room.currentMap}, Tunnel: ${room.tunnel.name}`,
-    });
-
-    this.sendRoomMessage(room, `🚀 MATCH LAUNCHED! Good luck commanders!`);
-    this.sendRoomMessage(room, `CnCNet Tunnel: ${room.tunnel.host}:${room.tunnel.port} (${room.tunnel.name})`);
-
-    // Standard CnCNet client launch CTCP
-    this.sendRaw(`PRIVMSG ${room.channel} :\x01LAUNCH ${room.tunnel.host}:${room.tunnel.port}\x01`);
-
-    this.sendRoomTopic(room);
-    this.broadcastGameAnnouncement(room);
-
-    // Auto-rotate to next map in pool for the next game
-    if (room.autoRehostOnFinish) {
-      const currentIndex = room.mapPool.indexOf(room.currentMap);
-      const nextIndex = (currentIndex + 1) % room.mapPool.length;
-      room.currentMap = room.mapPool[nextIndex];
-    }
-  }
-
-  public resetRoomAfterMatch(roomId: string) {
-    const room = this.rooms.get(roomId);
-    if (!room) return;
-
-    room.status = 'WAITING';
-    room.countdownSeconds = null;
-    room.matchStartedAt = undefined;
-    for (const p of room.players) {
-      p.isReady = false;
-    }
-
-    this.sendRoomMessage(room, `[RA1 HOST] Room reset for the next match! Next Map: ${room.currentMap}`);
-    this.sendRoomTopic(room);
-    this.broadcastGameAnnouncement(room);
   }
 
   // ======================== CTCP ========================
@@ -1084,7 +915,7 @@ export class CnCNetAutoHostBot {
           this.broadcastGameAnnouncement(room);
         }
       }
-    }, this.config.announcementIntervalSec * 1000);
+    }, Math.max(30, this.config.announcementIntervalSec) * 1000);
   }
 
   private startPingWatchdog() {
@@ -1193,7 +1024,7 @@ export class CnCNetAutoHostBot {
     }
   }
 
-  public simulateEvent(type: 'SIM_PLAYER_JOIN' | 'SIM_PLAYER_READY' | 'SIM_PLAYER_LEAVE' | 'SIM_PLAYER_CHAT' | 'SIM_FORCE_LAUNCH', payload: any = {}) {
+  public simulateEvent(type: 'SIM_PLAYER_JOIN' | 'SIM_PLAYER_READY' | 'SIM_PLAYER_LEAVE' | 'SIM_PLAYER_CHAT', payload: any = {}) {
     const roomId = payload.roomId || Array.from(this.rooms.keys())[0];
     const room = this.rooms.get(roomId);
     if (!room) throw new Error('No active RA1 room found');
@@ -1231,10 +1062,6 @@ export class CnCNetAutoHostBot {
         if (msg.startsWith('!')) {
           this.handlePlayerCommand(room, sender, msg);
         }
-        break;
-      }
-      case 'SIM_FORCE_LAUNCH': {
-        this.startLaunchCountdown(room, 'Simulated RA1 launch');
         break;
       }
     }

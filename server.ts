@@ -3,7 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { createServer as createViteServer } from 'vite';
-import { CnCNetAutoHostBot, RA1_DEFINITION, CNCNET_TUNNELS } from './server/cncnetBot.ts';
+import { CnCNetAutoHostBot, RA1_DEFINITION } from './server/cncnetBot.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -21,11 +21,10 @@ const cncnetBot = new CnCNetAutoHostBot({
   nick: 'RA1_AutoHost',
   realName: 'CnCNet Red Alert 1 AutoHost Bot',
   announcementChannel: '#cncnet-ra-games',
-  announcementChannelKey: 'ra1-derp',
   autoReconnect: true,
   reconnectIntervalSec: 5,
   maxReconnectIntervalSec: 60,
-  announcementIntervalSec: 15,
+  announcementIntervalSec: 30,
 });
 
 // Auto-connect on server launch
@@ -44,7 +43,6 @@ app.get('/api/status', (req, res) => {
     data: cncnetBot.getStatus(),
     config: cncnetBot.getConfig(),
     gameDefinition: RA1_DEFINITION,
-    tunnels: CNCNET_TUNNELS,
   });
 });
 
@@ -126,41 +124,6 @@ app.post('/api/rooms/close', (req, res) => {
     if (!roomId) throw new Error('roomId is required');
     cncnetBot.closeRoom(roomId, reason);
     res.json({ success: true, message: 'Room closed.' });
-  } catch (err: any) {
-    res.status(400).json({ success: false, error: err.message });
-  }
-});
-
-app.post('/api/rooms/launch', (req, res) => {
-  const { roomId } = req.body || {};
-  try {
-    const room = cncnetBot.getRoom(roomId);
-    if (!room) throw new Error('Room not found');
-    cncnetBot.startLaunchCountdown(room, 'Manual launch triggered from Web Dashboard');
-    res.json({ success: true, message: 'Launch countdown started!' });
-  } catch (err: any) {
-    res.status(400).json({ success: false, error: err.message });
-  }
-});
-
-app.post('/api/rooms/abort', (req, res) => {
-  const { roomId } = req.body || {};
-  try {
-    const room = cncnetBot.getRoom(roomId);
-    if (!room) throw new Error('Room not found');
-    cncnetBot.cancelLaunchCountdown(room, 'Aborted from Web Dashboard');
-    res.json({ success: true, message: 'Launch countdown cancelled.' });
-  } catch (err: any) {
-    res.status(400).json({ success: false, error: err.message });
-  }
-});
-
-app.post('/api/rooms/reset', (req, res) => {
-  const { roomId } = req.body || {};
-  try {
-    if (!roomId) throw new Error('roomId is required');
-    cncnetBot.resetRoomAfterMatch(roomId);
-    res.json({ success: true, message: 'Room reset for next match.' });
   } catch (err: any) {
     res.status(400).json({ success: false, error: err.message });
   }

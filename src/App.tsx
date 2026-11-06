@@ -41,17 +41,9 @@ export interface GameDefinition {
   packageRepo: string;
   lobbyChannel: string;
   announcementChannel: string;
-  announcementChannelKey: string;
   defaultMaps: string[];
   defaultTitle: string;
   defaultMaxPlayers: number;
-}
-
-export interface TunnelNode {
-  name: string;
-  region: string;
-  host: string;
-  port: number;
 }
 
 export interface RoomPlayer {
@@ -70,11 +62,9 @@ export interface HostedRoom {
   gameTitle: string;
   channel: string;
   announcementChannel: string;
-  announcementChannelKey: string;
   lobbyChannel: string;
   password?: string;
   maxPlayers: number;
-  minPlayersToLaunch: number;
   currentMap: string;
   mapPool: string[];
   gameSpeed: number;
@@ -84,16 +74,11 @@ export interface HostedRoom {
   crates: boolean;
   fogOfWar: boolean;
   shroud: boolean;
-  tunnel: TunnelNode;
-  status: 'WAITING' | 'COUNTDOWN' | 'PLAYING' | 'FINISHED';
-  countdownSeconds: number | null;
+  status: 'WAITING';
   players: RoomPlayer[];
   mapVotes: Record<string, number>;
   createdAt: string;
   lastActivityAt: string;
-  matchStartedAt?: string;
-  autoRehostOnFinish: boolean;
-  autoLaunchWhenReady: boolean;
 }
 
 export interface HostingLogEntry {
@@ -123,7 +108,6 @@ export default function App() {
   const [rooms, setRooms] = useState<HostedRoom[]>([]);
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
   const [gameDef, setGameDef] = useState<GameDefinition | null>(null);
-  const [tunnels, setTunnels] = useState<TunnelNode[]>([]);
   const [hostingLogs, setHostingLogs] = useState<HostingLogEntry[]>([]);
   const [chatLogs, setChatLogs] = useState<ChatMessageEntry[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -134,8 +118,7 @@ export default function App() {
   // Create Room Form state (RA1 dedicated)
   const [newRoomTitle, setNewRoomTitle] = useState('[RA1] CnCNet AutoHost - Fast 1v1/2v2 [All Welcome]');
   const [newRoomMaxPlayers, setNewRoomMaxPlayers] = useState(4);
-  const [newRoomMinPlayers, setNewRoomMinPlayers] = useState(2);
-  const [newRoomMap, setNewRoomMap] = useState('Path Beyond (2-4)');
+  const [newRoomMap, setNewRoomMap] = useState('[2] Equal Opportunity');
   const [newRoomSpeed, setNewRoomSpeed] = useState(5);
   const [newRoomCredits, setNewRoomCredits] = useState(10000);
   const [newRoomBases, setNewRoomBases] = useState(true);
@@ -143,7 +126,6 @@ export default function App() {
   const [newRoomCrates, setNewRoomCrates] = useState(false);
   const [newRoomFog, setNewRoomFog] = useState(true);
   const [newRoomPassword, setNewRoomPassword] = useState('');
-  const [newRoomTunnelIndex, setNewRoomTunnelIndex] = useState(0);
 
   // Bot Config Form state
   const [configNick, setConfigNick] = useState('RA1_AutoHost');
@@ -180,7 +162,6 @@ export default function App() {
           }
         }
         if (json.gameDefinition) setGameDef(json.gameDefinition);
-        if (json.tunnels) setTunnels(json.tunnels);
         if (json.config) {
           setConfigNick(json.config.nick);
           setConfigServer(json.config.server);
@@ -301,7 +282,6 @@ export default function App() {
         gameType: 'RA',
         gameTitle: newRoomTitle,
         maxPlayers: newRoomMaxPlayers,
-        minPlayersToLaunch: newRoomMinPlayers,
         currentMap: newRoomMap,
         mapPool: gameDef ? gameDef.defaultMaps : [newRoomMap],
         gameSpeed: newRoomSpeed,
@@ -312,9 +292,6 @@ export default function App() {
         fogOfWar: newRoomFog,
         shroud: true,
         password: newRoomPassword || undefined,
-        tunnel: tunnels[newRoomTunnelIndex] || { name: 'Frankfurt (EU)', host: 'tunnel.cncnet.org', port: 50000 },
-        autoLaunchWhenReady: true,
-        autoRehostOnFinish: true,
       };
 
       const res = await fetch('/api/rooms/create', {
@@ -336,45 +313,6 @@ export default function App() {
       alert(err.message);
     } finally {
       setIsLoading(false);
-    }
-  };
-
-  const handleLaunchRoom = async (roomId: string) => {
-    try {
-      const res = await fetch('/api/rooms/launch', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ roomId }),
-      });
-      if (res.ok) await fetchStatus();
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const handleAbortCountdown = async (roomId: string) => {
-    try {
-      const res = await fetch('/api/rooms/abort', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ roomId }),
-      });
-      if (res.ok) await fetchStatus();
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const handleResetRoom = async (roomId: string) => {
-    try {
-      const res = await fetch('/api/rooms/reset', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ roomId }),
-      });
-      if (res.ok) await fetchStatus();
-    } catch (err) {
-      console.error(err);
     }
   };
 
@@ -505,8 +443,6 @@ export default function App() {
               <p className="text-xs text-slate-400 flex flex-wrap items-center gap-2 font-mono">
                 <span>Announce Channel: <strong className="text-red-400">#cncnet-ra-games</strong></span>
                 <span>•</span>
-                <span>Pass: <strong className="text-amber-400">ra1-derp</strong></span>
-                <span>•</span>
                 <span>Bot: <strong className="text-slate-200">{status?.nick || configNick}</strong></span>
               </p>
             </div>
@@ -568,7 +504,7 @@ export default function App() {
                 className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-red-600 hover:bg-red-500 text-white font-bold flex items-center gap-1.5 shadow transition-colors cursor-pointer"
               >
                 <PlusCircle className="w-3.5 h-3.5" />
-                Spawn RA1 Room
+                Create IRC Room
               </button>
             </div>
           </div>
@@ -585,10 +521,10 @@ export default function App() {
             </div>
             <div>
               <span className="font-bold text-white block">
-                Dedicated Command & Conquer: Red Alert 1 Match Hosting
+                Dedicated Command & Conquer: Red Alert 1 IRC Rooms
               </span>
               <span className="text-slate-300">
-                Broadcasting match announcements into <code className="text-red-400 font-bold font-mono">#cncnet-ra-games</code> with password key <code className="text-amber-400 font-bold font-mono">ra1-derp</code>. Fully compatible with CnCNet RA Client Package.
+Announces IRC room listings in #cncnet-ra-games. The game-list channel is public; the lobby channel key is separate.
               </span>
             </div>
           </div>
@@ -609,17 +545,6 @@ export default function App() {
               <p className="text-xs text-slate-400 mt-0.5">
                 Announced in <code className="text-slate-300 font-mono">#cncnet-ra-games</code>
               </p>
-            </div>
-          </div>
-
-          <div className="bg-slate-900 border border-slate-800 rounded-xl p-3.5 flex flex-col justify-between">
-            <div className="flex items-center justify-between text-slate-400 text-xs font-medium">
-              <span>Matches Launched</span>
-              <Flame className="w-4 h-4 text-amber-400" />
-            </div>
-            <div className="mt-2">
-              <div className="text-2xl font-black text-amber-400">{status?.stats.totalMatchesLaunched || 0}</div>
-              <p className="text-xs text-slate-400 mt-0.5">Dispatched to CnCNet spawners</p>
             </div>
           </div>
 
@@ -733,14 +658,14 @@ export default function App() {
                 <Gamepad2 className="w-12 h-12 text-slate-600 mb-3" />
                 <h3 className="text-base font-bold text-white">No Active RA1 Rooms</h3>
                 <p className="text-xs text-slate-400 max-w-md mt-1 mb-4">
-                  Spawn your first Red Alert 1 match room. It will announce into #cncnet-ra-games with key ra1-derp!
+Create your first IRC room. It will be advertised in #cncnet-ra-games.
                 </p>
                 <button
                   onClick={() => setActiveTab('create')}
                   className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-500 text-white font-bold text-xs flex items-center gap-2 cursor-pointer"
                 >
                   <PlusCircle className="w-4 h-4" />
-                  Spawn RA1 Room
+                  Create IRC Room
                 </button>
               </div>
             ) : (
@@ -783,14 +708,10 @@ export default function App() {
 
                           <span
                             className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider shrink-0 ${
-                              room.status === 'PLAYING'
-                                ? 'bg-amber-950 text-amber-300 border border-amber-800'
-                                : room.status === 'COUNTDOWN'
-                                ? 'bg-red-950 text-red-300 border border-red-800 animate-pulse'
-                                : 'bg-emerald-950 text-emerald-300 border border-emerald-800'
+                              'bg-emerald-950 text-emerald-300 border border-emerald-800'
                             }`}
                           >
-                            {room.status}
+                            OPEN
                           </span>
                         </div>
 
@@ -826,39 +747,11 @@ export default function App() {
                         <p className="text-xs text-slate-400 mt-1 flex flex-wrap items-center gap-2 font-mono">
                           <span>IRC: <strong className="text-slate-200">{selectedRoom.channel}</strong></span>
                           <span>•</span>
-                          <span>Announce: <strong className="text-red-400">{selectedRoom.announcementChannel}</strong> (key: {selectedRoom.announcementChannelKey})</span>
-                          <span>•</span>
-                          <span>Tunnel: <strong className="text-cyan-400">{selectedRoom.tunnel.name}</strong></span>
+                          <span>Game list: <strong className="text-red-400">{selectedRoom.announcementChannel}</strong></span>
                         </p>
                       </div>
 
                       <div className="flex items-center gap-2 shrink-0">
-                        {selectedRoom.status === 'WAITING' ? (
-                          <button
-                            onClick={() => handleLaunchRoom(selectedRoom.id)}
-                            className="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow"
-                          >
-                            <Play className="w-3.5 h-3.5" />
-                            Force Launch
-                          </button>
-                        ) : selectedRoom.status === 'COUNTDOWN' ? (
-                          <button
-                            onClick={() => handleAbortCountdown(selectedRoom.id)}
-                            className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-red-300 font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow"
-                          >
-                            <XCircle className="w-3.5 h-3.5" />
-                            Abort ({selectedRoom.countdownSeconds}s)
-                          </button>
-                        ) : (
-                          <button
-                            onClick={() => handleResetRoom(selectedRoom.id)}
-                            className="px-3 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow"
-                          >
-                            <RotateCcw className="w-3.5 h-3.5" />
-                            Reset for Next Match
-                          </button>
-                        )}
-
                         <button
                           onClick={() => handleCloseRoom(selectedRoom.id)}
                           className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-red-950/60 text-slate-400 hover:text-red-400 border border-slate-700 text-xs font-semibold cursor-pointer"
@@ -868,26 +761,6 @@ export default function App() {
                         </button>
                       </div>
                     </div>
-
-                    {/* Countdown Banner */}
-                    {selectedRoom.status === 'COUNTDOWN' && (
-                      <div className="bg-red-950/40 border border-red-500/50 rounded-xl p-3.5 flex items-center justify-between text-red-200">
-                        <div className="flex items-center gap-3">
-                          <Flame className="w-5 h-5 text-red-400 animate-bounce" />
-                          <div>
-                            <strong className="text-sm font-bold block text-red-300">
-                              ⚡ Red Alert 1 Launch Countdown in Progress!
-                            </strong>
-                            <p className="text-xs text-red-300/80">
-                              All commanders ready. Sending launch packets to cncnet-ra-client-package spawners...
-                            </p>
-                          </div>
-                        </div>
-                        <div className="text-3xl font-black font-mono text-red-400 animate-ping">
-                          {selectedRoom.countdownSeconds}s
-                        </div>
-                      </div>
-                    )}
 
                     {/* Attributes Grid */}
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-950/60 p-3.5 rounded-xl border border-slate-800">
@@ -925,7 +798,7 @@ export default function App() {
                           Connected Commanders ({selectedRoom.players.length}/{selectedRoom.maxPlayers})
                         </h4>
                         <span className="text-[11px] text-slate-400">
-                          Auto-launches at {selectedRoom.minPlayersToLaunch}+ ready commanders
+                          Room is open to players
                         </span>
                       </div>
 
@@ -1162,9 +1035,9 @@ export default function App() {
                 <PlusCircle className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="font-bold text-base text-white">Spawn Red Alert 1 AutoHost Room</h3>
+                <h3 className="font-bold text-base text-white">Create Red Alert 1 IRC Room</h3>
                 <p className="text-xs text-slate-400">
-                  Broadcasts directly into <code className="text-red-400 font-mono">#cncnet-ra-games</code> with password <code className="text-amber-400 font-mono">ra1-derp</code>.
+                  Advertises the room in the public #cncnet-ra-games channel.
                 </p>
               </div>
             </div>
@@ -1214,18 +1087,6 @@ export default function App() {
                 </div>
 
                 <div>
-                  <label className="block font-bold text-slate-300 mb-1">Min to Auto-Launch</label>
-                  <select
-                    value={newRoomMinPlayers}
-                    onChange={(e) => setNewRoomMinPlayers(Number(e.target.value))}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-red-500 font-mono"
-                  >
-                    <option value={2}>2 Players</option>
-                    <option value={3}>3 Players</option>
-                    <option value={4}>4 Players</option>
-                  </select>
-                </div>
-
                 <div>
                   <label className="block font-bold text-slate-300 mb-1">Game Speed</label>
                   <select
@@ -1256,20 +1117,6 @@ export default function App() {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-bold text-slate-300 mb-1">CnCNet Relay Tunnel</label>
-                  <select
-                    value={newRoomTunnelIndex}
-                    onChange={(e) => setNewRoomTunnelIndex(Number(e.target.value))}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-red-500 font-mono"
-                  >
-                    {tunnels.map((t, idx) => (
-                      <option key={t.name} value={idx}>
-                        {t.name} ({t.host}:{t.port})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
                 <div>
                   <label className="block font-bold text-slate-300 mb-1">Private Room Password</label>
                   <input
@@ -1338,7 +1185,7 @@ export default function App() {
                   className="px-5 py-2 rounded-lg bg-red-600 hover:bg-red-500 text-white font-bold flex items-center gap-2 cursor-pointer shadow"
                 >
                   <PlusCircle className="w-4 h-4" />
-                  Spawn RA1 Room
+                  Create IRC Room
                 </button>
               </div>
             </form>
@@ -1419,8 +1266,7 @@ export default function App() {
                   {hostingLogs.length > 0 ? (
                     hostingLogs.map((log) => {
                       let badge = 'bg-slate-800 text-slate-300';
-                      if (log.type === 'MATCH_LAUNCHED') badge = 'bg-red-950 text-red-300 border border-red-800';
-                      else if (log.type === 'PLAYER_READY') badge = 'bg-emerald-950 text-emerald-300 border border-emerald-800';
+                      if (log.type === 'PLAYER_READY') badge = 'bg-emerald-950 text-emerald-300 border border-emerald-800';
                       else if (log.type === 'PLAYER_JOIN') badge = 'bg-cyan-950 text-cyan-300 border border-cyan-800';
 
                       return (
@@ -1464,7 +1310,7 @@ export default function App() {
               <div>
                 <h3 className="font-bold text-base text-white">cncnet-ra-client-package Test Harness</h3>
                 <p className="text-xs text-slate-400">
-                  Simulate Red Alert 1 player joins, ready marks, and map votes without a physical game launch.
+                  Simulate IRC room joins, readiness marks, chat, and map votes.
                 </p>
               </div>
             </div>
@@ -1508,7 +1354,7 @@ export default function App() {
                     Toggle Player Ready
                   </h4>
                   <p className="text-[11px] text-slate-400 mb-3">
-                    Marks commander as ready. If all ready, initiates 5-second auto-launch countdown.
+                    Marks the simulated commander as ready for lobby tracking only.
                   </p>
                   <div className="text-[11px] text-slate-500 mb-3">
                     Room: {selectedRoom ? selectedRoom.channel : 'active room'}
@@ -1546,26 +1392,6 @@ export default function App() {
                 </button>
               </div>
 
-              <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 flex flex-col justify-between">
-                <div>
-                  <h4 className="font-bold text-white flex items-center gap-2 mb-1">
-                    <Flame className="w-4 h-4 text-amber-400" />
-                    Trigger Auto-Launch
-                  </h4>
-                  <p className="text-[11px] text-slate-400 mb-3">
-                    Broadcasts match launch and tunnel endpoints to all players.
-                  </p>
-                  <div className="text-[11px] text-slate-500 mb-3">
-                    Dispatches <code className="text-slate-300">\x01LAUNCH\x01</code> payload
-                  </div>
-                </div>
-                <button
-                  onClick={() => handleSimulate('SIM_FORCE_LAUNCH')}
-                  className="w-full py-2 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded cursor-pointer"
-                >
-                  Trigger Launch Countdown
-                </button>
-              </div>
             </div>
           </div>
         )}
@@ -1580,7 +1406,7 @@ export default function App() {
               <div>
                 <h3 className="font-bold text-base text-white">CnCNet Red Alert 1 IRC Settings</h3>
                 <p className="text-xs text-slate-400">
-                  Target Channel: <code className="text-red-400 font-mono">#cncnet-ra-games</code> with password <code className="text-amber-400 font-mono">ra1-derp</code>.
+                  Game-list channel: <code className="text-red-400 font-mono">#cncnet-ra-games</code> (public, no key). Lobby channel: <code className="text-red-400 font-mono">#cncnet-ra</code> (keyed).
                 </p>
               </div>
             </div>
@@ -1659,7 +1485,7 @@ export default function App() {
         >
           CnCNet/cncnet-ra-client-package
         </a>{' '}
-        • Channel: <strong className="text-slate-300">#cncnet-ra-games</strong> (pass: <strong className="text-amber-400">ra1-derp</strong>)
+        • Game-list channel: <strong className="text-slate-300">#cncnet-ra-games</strong> (public)
       </footer>
     </div>
   );
