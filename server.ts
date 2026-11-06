@@ -130,41 +130,6 @@ app.post('/api/rooms/close', (req, res) => {
   }
 });
 
-app.post('/api/rooms/launch', (req, res) => {
-  const { roomId } = req.body || {};
-  try {
-    const room = cncnetBot.getRoom(roomId);
-    if (!room) throw new Error('Room not found');
-    cncnetBot.startLaunchCountdown(room, 'Manual launch triggered from Web Dashboard');
-    res.json({ success: true, message: 'Launch countdown started!' });
-  } catch (err: any) {
-    res.status(400).json({ success: false, error: err.message });
-  }
-});
-
-app.post('/api/rooms/abort', (req, res) => {
-  const { roomId } = req.body || {};
-  try {
-    const room = cncnetBot.getRoom(roomId);
-    if (!room) throw new Error('Room not found');
-    cncnetBot.cancelLaunchCountdown(room, 'Aborted from Web Dashboard');
-    res.json({ success: true, message: 'Launch countdown cancelled.' });
-  } catch (err: any) {
-    res.status(400).json({ success: false, error: err.message });
-  }
-});
-
-app.post('/api/rooms/reset', (req, res) => {
-  const { roomId } = req.body || {};
-  try {
-    if (!roomId) throw new Error('roomId is required');
-    cncnetBot.resetRoomAfterMatch(roomId);
-    res.json({ success: true, message: 'Room reset for next match.' });
-  } catch (err: any) {
-    res.status(400).json({ success: false, error: err.message });
-  }
-});
-
 app.post('/api/rooms/chat', (req, res) => {
   const { roomId, message } = req.body || {};
   try {
