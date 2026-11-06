@@ -46,13 +46,6 @@ export interface GameDefinition {
   defaultMaxPlayers: number;
 }
 
-export interface TunnelNode {
-  name: string;
-  region: string;
-  host: string;
-  port: number;
-}
-
 export interface RoomPlayer {
   nick: string;
   slot: number;
@@ -81,7 +74,6 @@ export interface HostedRoom {
   crates: boolean;
   fogOfWar: boolean;
   shroud: boolean;
-  tunnel: TunnelNode;
   status: 'WAITING';
   players: RoomPlayer[];
   mapVotes: Record<string, number>;
@@ -116,7 +108,6 @@ export default function App() {
   const [rooms, setRooms] = useState<HostedRoom[]>([]);
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
   const [gameDef, setGameDef] = useState<GameDefinition | null>(null);
-  const [tunnels, setTunnels] = useState<TunnelNode[]>([]);
   const [hostingLogs, setHostingLogs] = useState<HostingLogEntry[]>([]);
   const [chatLogs, setChatLogs] = useState<ChatMessageEntry[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -135,7 +126,6 @@ export default function App() {
   const [newRoomCrates, setNewRoomCrates] = useState(false);
   const [newRoomFog, setNewRoomFog] = useState(true);
   const [newRoomPassword, setNewRoomPassword] = useState('');
-  const [newRoomTunnelIndex, setNewRoomTunnelIndex] = useState(0);
 
   // Bot Config Form state
   const [configNick, setConfigNick] = useState('RA1_AutoHost');
@@ -172,7 +162,6 @@ export default function App() {
           }
         }
         if (json.gameDefinition) setGameDef(json.gameDefinition);
-        if (json.tunnels) setTunnels(json.tunnels);
         if (json.config) {
           setConfigNick(json.config.nick);
           setConfigServer(json.config.server);
@@ -303,7 +292,6 @@ export default function App() {
         fogOfWar: newRoomFog,
         shroud: true,
         password: newRoomPassword || undefined,
-        tunnel: tunnels[newRoomTunnelIndex] || { name: 'Frankfurt (EU)', host: 'tunnel.cncnet.org', port: 50000 },
       };
 
       const res = await fetch('/api/rooms/create', {
