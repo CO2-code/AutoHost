@@ -150,7 +150,15 @@ export default function App() {
   const [configServer, setConfigServer] = useState('irc.cncnet.org');
   const [configPort, setConfigPort] = useState(6667);
   const [configUseSsl, setConfigUseSsl] = useState(false);
-  const [configInterval, setConfigInterval] = useState(15);
+  const [configInterval, setConfigInterval] = useState(30);
+  const [configGameVersion, setConfigGameVersion] = useState('');
+  const [apiToken, setApiToken] = useState(() => localStorage.getItem('autohost-api-token') || '');
+
+  const apiFetch = (input: RequestInfo | URL, init: RequestInit = {}) => {
+    const headers = new Headers(init.headers || {});
+    if (apiToken) headers.set('Authorization', `Bearer ${apiToken}`);
+    return fetch(input, { ...init, headers });
+  };
 
   // Simulator
   const [simNick, setSimNick] = useState('Soviet_General_77');
@@ -169,7 +177,7 @@ export default function App() {
   // Fetch status
   const fetchStatus = async () => {
     try {
-      const res = await fetch('/api/status');
+      const res = await apiFetch('/api/status');
       if (res.ok) {
         const json = await res.json();
         setStatus(json.data);
@@ -187,6 +195,7 @@ export default function App() {
           setConfigPort(json.config.port);
           setConfigUseSsl(json.config.useSsl);
           setConfigInterval(json.config.announcementIntervalSec);
+          setConfigGameVersion(json.config.gameVersion || '');
         }
       }
     } catch (err) {
@@ -196,7 +205,7 @@ export default function App() {
 
   const fetchLogs = async () => {
     try {
-      const res = await fetch('/api/logs/hosting?limit=150');
+      const res = await apiFetch('/api/logs/hosting?limit=150');
       if (res.ok) {
         const data = await res.json();
         setHostingLogs(data.logs);
@@ -210,7 +219,7 @@ export default function App() {
     try {
       const selectedRoom = rooms.find((r) => r.id === selectedRoomId);
       const url = selectedRoom ? `/api/logs/chat?channel=${encodeURIComponent(selectedRoom.channel)}&limit=150` : '/api/logs/chat?limit=150';
-      const res = await fetch(url);
+      const res = await apiFetch(url);
       if (res.ok) {
         const data = await res.json();
         setChatLogs(data.logs);
@@ -223,7 +232,7 @@ export default function App() {
   const fetchFile = async (type: 'hosting' | 'activity') => {
     setLoadingFile(true);
     try {
-      const res = await fetch(`/api/logs/file/${type}`);
+      const res = await apiFetch(`/api/logs/file/${type}`);
       if (res.ok) {
         const data = await res.json();
         setFileContent(data.content);
@@ -247,7 +256,7 @@ export default function App() {
     }, 2500);
 
     return () => clearInterval(interval);
-  }, [activeTab, selectedRoomId]);
+  }, [activeTab, selectedRoomId, apiToken]);
 
   useEffect(() => {
     if (activeTab === 'logs') {
@@ -265,7 +274,7 @@ export default function App() {
   const handleConnect = async () => {
     setIsLoading(true);
     try {
-      await fetch('/api/bot/connect', { method: 'POST' });
+      await apiFetch('/api/bot/connect', { method: 'POST' });
       await fetchStatus();
     } finally {
       setIsLoading(false);
@@ -276,7 +285,7 @@ export default function App() {
     if (!confirm('Disconnect bot from CnCNet IRC?')) return;
     setIsLoading(true);
     try {
-      await fetch('/api/bot/disconnect', { method: 'POST' });
+      await apiFetch('/api/bot/disconnect', { method: 'POST' });
       await fetchStatus();
     } finally {
       setIsLoading(false);
@@ -286,7 +295,7 @@ export default function App() {
   const handleReconnect = async () => {
     setIsLoading(true);
     try {
-      await fetch('/api/bot/reconnect', { method: 'POST' });
+      await apiFetch('/api/bot/reconnect', { method: 'POST' });
       await fetchStatus();
     } finally {
       setIsLoading(false);
@@ -317,7 +326,7 @@ export default function App() {
         autoRehostOnFinish: true,
       };
 
-      const res = await fetch('/api/rooms/create', {
+      const res = await apiFetch('/api/rooms/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -341,7 +350,7 @@ export default function App() {
 
   const handleLaunchRoom = async (roomId: string) => {
     try {
-      const res = await fetch('/api/rooms/launch', {
+      const res = await apiFetch('/api/rooms/launch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ roomId }),
@@ -354,7 +363,7 @@ export default function App() {
 
   const handleAbortCountdown = async (roomId: string) => {
     try {
-      const res = await fetch('/api/rooms/abort', {
+      const res = await apiFetch('/api/rooms/abort', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ roomId }),
@@ -367,7 +376,7 @@ export default function App() {
 
   const handleResetRoom = async (roomId: string) => {
     try {
-      const res = await fetch('/api/rooms/reset', {
+      const res = await apiFetch('/api/rooms/reset', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ roomId }),
@@ -381,7 +390,7 @@ export default function App() {
   const handleCloseRoom = async (roomId: string) => {
     if (!confirm('Are you sure you want to close this RA1 room?')) return;
     try {
-      const res = await fetch('/api/rooms/close', {
+      const res = await apiFetch('/api/rooms/close', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ roomId }),
@@ -399,7 +408,7 @@ export default function App() {
 
   const handleKickPlayer = async (roomId: string, nick: string) => {
     try {
-      const res = await fetch('/api/rooms/kick', {
+      const res = await apiFetch('/api/rooms/kick', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ roomId, nick }),
@@ -414,7 +423,7 @@ export default function App() {
     e.preventDefault();
     if (!chatInput.trim() || !selectedRoomId) return;
     try {
-      await fetch('/api/rooms/chat', {
+      await apiFetch('/api/rooms/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ roomId: selectedRoomId, message: chatInput.trim() }),
@@ -429,7 +438,7 @@ export default function App() {
   const handleSaveConfig = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const res = await fetch('/api/bot/config', {
+      const res = await apiFetch('/api/bot/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -438,6 +447,7 @@ export default function App() {
           port: configPort,
           useSsl: configUseSsl,
           announcementIntervalSec: configInterval,
+          gameVersion: configGameVersion,
         }),
       });
       if (res.ok) {
@@ -451,7 +461,7 @@ export default function App() {
 
   const handleSimulate = async (eventType: string, payload: any = {}) => {
     try {
-      const res = await fetch('/api/simulate', {
+      const res = await apiFetch('/api/simulate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ eventType, payload: { roomId: selectedRoomId, ...payload } }),
@@ -503,9 +513,9 @@ export default function App() {
                 </a>
               </div>
               <p className="text-xs text-slate-400 flex flex-wrap items-center gap-2 font-mono">
-                <span>Announce Channel: <strong className="text-red-400">#cncnet-ra-games</strong></span>
-                <span>•</span>
-                <span>Pass: <strong className="text-amber-400">ra1-derp</strong></span>
+                 <span>Lobby: <strong className="text-red-400">#cncnet-ra</strong> (key: <strong className="text-amber-400">ra1-derp</strong>)</span>
+                 <span>•</span>
+                 <span>Game list: <strong className="text-red-400">#cncnet-ra-games</strong> (no key)</span>
                 <span>•</span>
                 <span>Bot: <strong className="text-slate-200">{status?.nick || configNick}</strong></span>
               </p>
@@ -588,7 +598,7 @@ export default function App() {
                 Dedicated Command & Conquer: Red Alert 1 Match Hosting
               </span>
               <span className="text-slate-300">
-                Broadcasting match announcements into <code className="text-red-400 font-bold font-mono">#cncnet-ra-games</code> with password key <code className="text-amber-400 font-bold font-mono">ra1-derp</code>. Fully compatible with CnCNet RA Client Package.
+                The RA1 lobby is <code className="text-red-400 font-bold font-mono">#cncnet-ra</code> (key <code className="text-amber-400 font-bold font-mono">ra1-derp</code>); game listings are sent to <code className="text-red-400 font-bold font-mono">#cncnet-ra-games</code> without a key.
               </span>
             </div>
           </div>
@@ -1093,7 +1103,7 @@ export default function App() {
                 <button
                   onClick={() => {
                     if (selectedRoomId) {
-                      fetch('/api/rooms/chat', {
+                      apiFetch('/api/rooms/chat', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ roomId: selectedRoomId, message: '!maps' }),
@@ -1107,7 +1117,7 @@ export default function App() {
                 <button
                   onClick={() => {
                     if (selectedRoomId) {
-                      fetch('/api/rooms/chat', {
+                      apiFetch('/api/rooms/chat', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ roomId: selectedRoomId, message: '!status' }),
@@ -1121,7 +1131,7 @@ export default function App() {
                 <button
                   onClick={() => {
                     if (selectedRoomId) {
-                      fetch('/api/rooms/chat', {
+                      apiFetch('/api/rooms/chat', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ roomId: selectedRoomId, message: 'Commanders, type !ready when you are prepared!' }),
@@ -1379,19 +1389,31 @@ export default function App() {
                   </button>
                 </div>
 
-                <a
-                  href={`/api/logs/download/${fileType}`}
-                  download
+                <button
+                  onClick={async () => {
+                    try {
+                      const response = await apiFetch(`/api/logs/download/${fileType}`);
+                      if (!response.ok) throw new Error(await response.text() || 'Log download failed.');
+                      const objectUrl = URL.createObjectURL(await response.blob());
+                      const link = document.createElement('a');
+                      link.href = objectUrl;
+                      link.download = `cncnet_${fileType}_${new Date().toISOString().slice(0, 10)}.log`;
+                      link.click();
+                      URL.revokeObjectURL(objectUrl);
+                    } catch (err: any) {
+                      alert(err.message);
+                    }
+                  }}
                   className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
                 >
                   <Download className="w-3.5 h-3.5" />
                   Download
-                </a>
+                </button>
 
                 <button
                   onClick={async () => {
                     if (confirm('Clear logs?')) {
-                      await fetch('/api/logs/clear', { method: 'POST' });
+                      await apiFetch('/api/logs/clear', { method: 'POST' });
                       await fetchLogs();
                       fetchFile(fileType);
                     }
@@ -1580,12 +1602,39 @@ export default function App() {
               <div>
                 <h3 className="font-bold text-base text-white">CnCNet Red Alert 1 IRC Settings</h3>
                 <p className="text-xs text-slate-400">
-                  Target Channel: <code className="text-red-400 font-mono">#cncnet-ra-games</code> with password <code className="text-amber-400 font-mono">ra1-derp</code>.
+                  Lobby: <code className="text-red-400 font-mono">#cncnet-ra</code> (key <code className="text-amber-400 font-mono">ra1-derp</code>); game list: <code className="text-red-400 font-mono">#cncnet-ra-games</code> (no key).
                 </p>
               </div>
             </div>
 
             <form onSubmit={handleSaveConfig} className="space-y-4 text-xs">
+              <div>
+                <label className="block font-bold text-slate-300 mb-1">Dashboard API Token</label>
+                <input
+                  type="password"
+                  value={apiToken}
+                  onChange={(e) => {
+                    setApiToken(e.target.value);
+                    localStorage.setItem('autohost-api-token', e.target.value);
+                  }}
+                  placeholder="Paste AUTOHOST_API_TOKEN"
+                  autoComplete="current-password"
+                  className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-red-500"
+                />
+                <p className="text-[11px] text-slate-500 mt-1">Must match the AUTOHOST_API_TOKEN secret configured on the server. This token is saved in this browser only.</p>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-300 mb-1">RA1 Client Game Version</label>
+                <input
+                  type="text"
+                  value={configGameVersion}
+                  onChange={(e) => setConfigGameVersion(e.target.value)}
+                  placeholder="Exact contents of the RA1 client version file"
+                  className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-red-500"
+                />
+                <p className="text-[11px] text-slate-500 mt-1">Required for XNA game listings. Use the exact version string from your installed CnCNet RA1 client; do not guess it.</p>
+              </div>
               <div>
                 <label className="block font-bold text-slate-300 mb-1">Bot Nickname on CnCNet IRC</label>
                 <input
@@ -1624,14 +1673,13 @@ export default function App() {
                 </label>
                 <input
                   type="number"
-                  min={5}
-                  max={60}
+                  min={30}$1max={60}
                   value={configInterval}
                   onChange={(e) => setConfigInterval(Number(e.target.value))}
                   className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-red-500"
                 />
                 <p className="text-[11px] text-slate-500 mt-1">
-                  Interval for refreshing match availability on #cncnet-ra-games.
+                  XNA-compatible room refresh interval. Minimum: 30 seconds.
                 </p>
               </div>
 
@@ -1659,7 +1707,7 @@ export default function App() {
         >
           CnCNet/cncnet-ra-client-package
         </a>{' '}
-        • Channel: <strong className="text-slate-300">#cncnet-ra-games</strong> (pass: <strong className="text-amber-400">ra1-derp</strong>)
+        • Lobby: <strong className="text-slate-300">#cncnet-ra</strong> (key: <strong className="text-amber-400">ra1-derp</strong>) • Game list: <strong className="text-slate-300">#cncnet-ra-games</strong> (no key)
       </footer>
     </div>
   );
