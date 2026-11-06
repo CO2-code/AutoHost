@@ -260,7 +260,10 @@ export class CnCNetAutoHostBot {
     const previousInterval = this.config.announcementIntervalSec;
     const previousGameVersion = this.config.gameVersion;
     this.config = { ...this.config, ...newConfig };
-    this.config.announcementIntervalSec = Math.max(30, Math.min(60, this.config.announcementIntervalSec || 30));
+    const requestedInterval = Number(this.config.announcementIntervalSec);
+    this.config.announcementIntervalSec = Number.isFinite(requestedInterval) ? Math.max(30, Math.min(60, requestedInterval)) : 30;
+    const requestedSkillLevel = Number(this.config.skillLevel);
+    this.config.skillLevel = Number.isInteger(requestedSkillLevel) ? requestedSkillLevel : 0;
     if (previousInterval !== this.config.announcementIntervalSec && this.announcementTimer) this.startAnnouncementLoop();
     if (previousGameVersion !== this.config.gameVersion) {
       this.warnedMissingGameVersion = false;
@@ -282,14 +285,14 @@ export class CnCNetAutoHostBot {
       reconnectAttempts: this.reconnectAttempts,
       nextReconnectAt: this.nextReconnectAt ? this.nextReconnectAt.toISOString() : null,
       stats: { ...this.stats },
-      rooms: Array.from(this.rooms.values()).map(({ password, channelKey, ...room }) => room),
+      rooms: Array.from(this.rooms.values()).map(({ password, channelKey, countdownTimerId, ...room }) => room),
       gameVersionConfigured: Boolean(this.config.gameVersion),
       gameDefinition: RA1_DEFINITION,
     };
   }
 
   public getRooms() {
-    return Array.from(this.rooms.values()).map(({ password, channelKey, ...room }) => room);
+    return Array.from(this.rooms.values()).map(({ password, channelKey, countdownTimerId, ...room }) => room);
   }
 
   public getRoom(id: string): HostedRoom | undefined {
