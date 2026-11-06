@@ -69,7 +69,6 @@ export interface HostedRoom {
   gameTitle: string;
   channel: string;
   announcementChannel: string;
-  announcementChannelKey: string;
   lobbyChannel: string;
   password?: string;
   maxPlayers: number;
@@ -1198,7 +1197,7 @@ Create your first IRC room. It will be advertised in #cncnet-ra-games.
                   className="px-5 py-2 rounded-lg bg-red-600 hover:bg-red-500 text-white font-bold flex items-center gap-2 cursor-pointer shadow"
                 >
                   <PlusCircle className="w-4 h-4" />
-                  Spawn RA1 Room
+                  Create IRC Room
                 </button>
               </div>
             </form>
