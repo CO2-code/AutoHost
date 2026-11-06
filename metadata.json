@@ -1,0 +1,6 @@
+{
+  "name": "GameSurge IRC Channel Guard",
+  "description": "24/7 CnCNet Red Alert 1 match auto-host bot compatible with cncnet-ra-client-package. Broadcasting to #cncnet-ra-games with password key ra1-derp.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

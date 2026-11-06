@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CnCNet Red Alert 1 AutoHost Bot - cncnet-ra-client-package</title>
+    <meta name="description" content="24/7 CnCNet Red Alert 1 match auto-host bot compatible with cncnet-ra-client-package. Broadcasting to #cncnet-ra-games with password key ra1-derp." />
+    <meta property="og:title" content="CnCNet Red Alert 1 AutoHost Bot - cncnet-ra-client-package" />
+    <meta property="og:description" content="24/7 CnCNet Red Alert 1 match auto-host bot compatible with cncnet-ra-client-package. Broadcasting to #cncnet-ra-games with password key ra1-derp." />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <script>
+      // Suppress harmless Vite HMR/WebSocket errors in AI Studio iframe environment
+      window.addEventListener('error', function(event) {
+        if (
+          event &&
+          (event.message?.includes('WebSocket') ||
+            event.message?.includes('createWebSocketModuleRunnerTransport') ||
+            event.filename?.includes('@vite/client') ||
+            (typeof event.error?.stack === 'string' && event.error.stack.includes('@vite/client')))
+        ) {
+          event.stopImmediatePropagation();
+          event.preventDefault();
+        }
+      });
+      window.addEventListener('unhandledrejection', function(event) {
+        if (
+          event &&
+          event.reason &&
+          (event.reason.message?.includes('WebSocket') ||
+            event.reason.message?.includes('createWebSocketModuleRunnerTransport') ||
+            (typeof event.reason.stack === 'string' && event.reason.stack.includes('@vite/client')))
+        ) {
+          event.stopImmediatePropagation();
+          event.preventDefault();
+        }
+      });
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+
