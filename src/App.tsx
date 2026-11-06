@@ -1587,7 +1587,7 @@ export default function App() {
                   onClick={() => handleSimulate('SIM_FORCE_LAUNCH')}
                   className="w-full py-2 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded cursor-pointer"
                 >
-                  Trigger Launch Countdown
+                  Trigger Room Countdown
                 </button>
               </div>
             </div>
