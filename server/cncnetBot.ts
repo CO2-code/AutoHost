@@ -23,20 +23,8 @@ export const RA1_DEFINITION: GameDefinition = {
   lobbyChannel: '#cncnet-ra',
   announcementChannel: '#cncnet-ra-games',
   lobbyChannelKey: 'ra1-derp',
-  defaultMaps: [
-    'Path Beyond (2-4)',
-    'North by Northwest (2-4)',
-    'Keep off the Grass (2-4)',
-    'Behind the Veil (2-4)',
-    'Casserole (2-6)',
-    'Bullseye (2-4)',
-    'Marooned (2-4)',
-    'River Raid (2-4)',
-    'Gold Rush (2-4)',
-    'Middle Ground (2-4)',
-    'Island Hop (2-4)',
-    'Coastal Influence (2-4)',
-  ],
+  defaultMaps: ['[2] Equal Opportunity'],
+
   defaultTitle: '[RA1] CnCNet AutoHost - Fast 1v1/2v2 [All Welcome]',
   defaultMaxPlayers: 4,
 };
@@ -195,7 +183,7 @@ export class CnCNetAutoHostBot {
     this.createRoom({
       gameTitle: '[RA1] CnCNet AutoHost - Fast 1v1/2v2 [All Welcome]',
       maxPlayers: 4,
-      currentMap: 'Path Beyond (2-4)',
+      currentMap: '[2] Equal Opportunity',
       gameSpeed: 5,
       startingCredits: 10000,
       bases: true,
@@ -711,17 +699,19 @@ export class CnCNetAutoHostBot {
   public broadcastGameAnnouncement(room: HostedRoom, closed = false) {
     if (this.state !== 'REGISTERED') return;
 
-    const gameVersion = process.env.CNCNET_RA1_GAME_VERSION?.trim();
-    const mapSha1 = process.env.CNCNET_RA1_MAP_SHA1?.trim();
-    if (!gameVersion || !mapSha1) {
-      this.logHosting('ERROR', 'Game-list advertisement skipped: set CNCNET_RA1_GAME_VERSION and CNCNET_RA1_MAP_SHA1 to the exact values from the installed RA1 client/map.');
+    const gameVersion = process.env.CNCNET_RA1_GAME_VERSION?.trim() || '0.1.2';
+    const configuredMapName = process.env.CNCNET_RA1_MAP_NAME?.trim();
+    const isSampleMap = room.currentMap === '[2] Equal Opportunity' && (!configuredMapName || configuredMapName === '[2] Equal Opportunity');
+    const mapSha1 = process.env.CNCNET_RA1_MAP_SHA1?.trim() || (isSampleMap ? 'cd454a0a7849d65bbc4a78e49ad7fbae5323623d' : '');
+    if (!mapSha1) {
+      this.logHosting('ERROR', `Game-list advertisement skipped: no SHA-1 configured for map '${room.currentMap}'. Set CNCNET_RA1_MAP_SHA1 to that map's exact hash.`);
       return;
     }
 
     const flags = `0${room.password ? '1' : '0'}${closed ? '1' : '0'}00`;
     const players = room.players.map((player) => player.nick).join(',');
     const tunnel = '[DYN]';
-    const mapName = process.env.CNCNET_RA1_MAP_NAME?.trim() || room.currentMap;
+    const mapName = configuredMapName || room.currentMap;
     const gameMode = process.env.CNCNET_RA1_GAME_MODE || 'Standard';
     const skill = process.env.CNCNET_RA1_SKILL || '1';
     const gameOptions = process.env.CNCNET_RA1_GAME_OPTIONS || '';
