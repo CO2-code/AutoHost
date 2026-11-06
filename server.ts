@@ -3,7 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { createServer as createViteServer } from 'vite';
-import { CnCNetAutoHostBot, RA1_DEFINITION, CNCNET_TUNNELS } from './server/cncnetBot.ts';
+import { CnCNetAutoHostBot, RA1_DEFINITION } from './server/cncnetBot.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -43,7 +43,6 @@ app.get('/api/status', (req, res) => {
     data: cncnetBot.getStatus(),
     config: cncnetBot.getConfig(),
     gameDefinition: RA1_DEFINITION,
-    tunnels: CNCNET_TUNNELS,
   });
 });
 
