@@ -253,7 +253,7 @@ export class CnCNetAutoHostBot {
   // ======================== CONFIG & STATUS ========================
 
   public getConfig(): CnCNetBotConfig {
-    return { ...this.config };
+    return { ...this.config, lobbyChannelKey: '' };
   }
 
   public updateConfig(newConfig: Partial<CnCNetBotConfig>) {
@@ -288,8 +288,8 @@ export class CnCNetAutoHostBot {
     };
   }
 
-  public getRooms(): HostedRoom[] {
-    return Array.from(this.rooms.values());
+  public getRooms() {
+    return Array.from(this.rooms.values()).map(({ password, channelKey, ...room }) => room);
   }
 
   public getRoom(id: string): HostedRoom | undefined {
@@ -539,7 +539,7 @@ export class CnCNetAutoHostBot {
       // Check if joined channel is the announcement channel
       if (joinedChannel === this.config.announcementChannel.toLowerCase()) {
         if (senderNick.toLowerCase() === this.currentNick.toLowerCase()) {
-          this.logHosting('SYSTEM', `Bot successfully joined ${this.config.announcementChannel} with key '${this.config.announcementChannelKey}'!`);
+          this.logHosting('SYSTEM', `Bot successfully joined ${this.config.announcementChannel}.`);
           // Broadcast rooms to #cncnet-ra-games
           for (const room of this.rooms.values()) {
             this.broadcastGameAnnouncement(room);
@@ -560,8 +560,8 @@ export class CnCNetAutoHostBot {
               roomId: room.id,
               channel: room.channel,
             });
-            this.sendRoomTopic(room);
             this.sendRaw(`MODE ${room.channel} +klnNs ${room.channelKey} ${room.maxPlayers}`);
+            this.sendRoomTopic(room);
             this.sendRoomSettings(room);
           } else {
             this.handlePlayerJoin(room, senderNick, senderHostmask);
@@ -825,8 +825,7 @@ export class CnCNetAutoHostBot {
   }
 
   /**
-   * Broadcast RA1 match announcement to #cncnet-ra-games (with key ra1-derp)
-   * Compatible with CnCNet/cncnet-ra-client-package!
+   * Broadcast the CnCNet RA1 game-list protocol to #cncnet-ra-games.
    */
   public broadcastGameAnnouncement(room: HostedRoom, closed = false) {
     if (this.state !== 'REGISTERED') return;
