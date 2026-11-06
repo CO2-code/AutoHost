@@ -41,23 +41,6 @@ export const RA1_DEFINITION: GameDefinition = {
   defaultMaxPlayers: 4,
 };
 
-export interface TunnelNode {
-  name: string;
-  region: string;
-  host: string;
-  port: number;
-}
-
-export const CNCNET_TUNNELS: TunnelNode[] = [
-  { name: 'Frankfurt (EU)', region: 'Europe', host: 'tunnel.cncnet.org', port: 50000 },
-  { name: 'New York (US-East)', region: 'North America', host: 'ny.cncnet.org', port: 50000 },
-  { name: 'San Jose (US-West)', region: 'North America', host: 'sj.cncnet.org', port: 50000 },
-  { name: 'London (UK)', region: 'Europe', host: 'uk.cncnet.org', port: 50000 },
-  { name: 'Amsterdam (EU)', region: 'Europe', host: 'nl.cncnet.org', port: 50000 },
-  { name: 'Singapore (Asia)', region: 'Asia-Pacific', host: 'sg.cncnet.org', port: 50000 },
-  { name: 'Direct P2P', region: 'Local / Peer-to-Peer', host: '0.0.0.0', port: 0 },
-];
-
 export interface RoomPlayer {
   nick: string;
   slot: number;
@@ -86,7 +69,6 @@ export interface HostedRoom {
   crates: boolean;
   fogOfWar: boolean;
   shroud: boolean;
-  tunnel: TunnelNode;
   status: 'WAITING';
   players: RoomPlayer[];
   mapVotes: Record<string, number>;
@@ -221,7 +203,6 @@ export class CnCNetAutoHostBot {
       crates: false,
       fogOfWar: true,
       shroud: true,
-      tunnel: CNCNET_TUNNELS[0],
     });
 
     this.logSystem(`CnCNet RA1 IRC room bot initialized. Game-list channel: ${this.config.announcementChannel}`);
@@ -560,7 +541,7 @@ export class CnCNetAutoHostBot {
       const channel = (params[2] || '').toLowerCase();
       const room = Array.from(this.rooms.values()).find((item) => item.channel.toLowerCase() === channel);
       if (room && trailing) {
-        for (const entry of trailing.split(/\\s+/)) {
+        for (const entry of trailing.split(/\s+/)) {
           const nick = entry.replace(/^[@+%&~]+/, '');
           if (nick && nick.toLowerCase() !== this.currentNick.toLowerCase()) {
             this.handlePlayerJoin(room, nick, '');
@@ -637,7 +618,6 @@ export class CnCNetAutoHostBot {
       crates: options.crates !== undefined ? options.crates : false,
       fogOfWar: options.fogOfWar !== undefined ? options.fogOfWar : true,
       shroud: options.shroud !== undefined ? options.shroud : true,
-      tunnel: options.tunnel || CNCNET_TUNNELS[0],
       status: 'WAITING',
       players: [],
       mapVotes: {},
@@ -651,7 +631,7 @@ export class CnCNetAutoHostBot {
     this.logHosting('ROOM_CREATED', `Created RA1 IRC room '${newRoom.gameTitle}' on ${newRoom.channel}`, {
       roomId: newRoom.id,
       channel: newRoom.channel,
-      details: `Map: ${newRoom.currentMap}, Max: ${newRoom.maxPlayers}, Tunnel: ${newRoom.tunnel.name}`,
+      details: `Map: ${newRoom.currentMap}, Max: ${newRoom.maxPlayers}`,
     });
 
     if (this.state === 'REGISTERED') {
@@ -694,7 +674,6 @@ export class CnCNetAutoHostBot {
     if (updates.crates !== undefined) room.crates = updates.crates;
     if (updates.fogOfWar !== undefined) room.fogOfWar = updates.fogOfWar;
     if (updates.shroud !== undefined) room.shroud = updates.shroud;
-    if (updates.tunnel) room.tunnel = updates.tunnel;
     if (updates.password !== undefined) room.password = updates.password || undefined;
 
     this.sendRoomTopic(room);
