@@ -259,18 +259,41 @@ export class CnCNetAutoHostBot {
   public updateConfig(newConfig: Partial<CnCNetBotConfig>) {
     const previousInterval = this.config.announcementIntervalSec;
     const previousGameVersion = this.config.gameVersion;
+    const previousServer = this.config.server;
+    const previousPort = this.config.port;
+    const previousSsl = this.config.useSsl;
+    const previousNick = this.config.nick;
     this.config = { ...this.config, ...newConfig };
     const requestedInterval = Number(this.config.announcementIntervalSec);
     this.config.announcementIntervalSec = Number.isFinite(requestedInterval) ? Math.max(30, Math.min(60, requestedInterval)) : 30;
     const requestedSkillLevel = Number(this.config.skillLevel);
     this.config.skillLevel = Number.isInteger(requestedSkillLevel) ? requestedSkillLevel : 0;
+
+    if (newConfig.nick !== undefined) this.currentNick = this.config.nick;
+
     if (previousInterval !== this.config.announcementIntervalSec && this.announcementTimer) this.startAnnouncementLoop();
+
     if (previousGameVersion !== this.config.gameVersion) {
       this.warnedMissingGameVersion = false;
       if (this.state === 'REGISTERED') {
         for (const room of this.rooms.values()) this.broadcastGameAnnouncement(room);
       }
     }
+
+    const connectionSettingsChanged =
+      previousServer !== this.config.server ||
+      previousPort !== this.config.port ||
+      previousSsl !== this.config.useSsl ||
+      previousNick !== this.config.nick;
+
+    if (connectionSettingsChanged && this.state !== 'DISCONNECTED') {
+      this.currentServerIndex = 0;
+      const reconnectEnabled = this.config.autoReconnect;
+      this.disconnect('IRC connection settings changed', true);
+      this.config.autoReconnect = reconnectEnabled;
+      setTimeout(() => this.connect(), 1500);
+    }
+
     this.logSystem(`Config updated: Server=${this.config.server}, Nick=${this.currentNick}, Channel=${this.config.announcementChannel}`);
   }
 
