@@ -74,7 +74,6 @@ export interface HostedRoom {
   gameTitle: string;
   channel: string;
   announcementChannel: string;
-  lobbyChannelKey: string;
   lobbyChannel: string;
   password?: string;
   maxPlayers: number;
