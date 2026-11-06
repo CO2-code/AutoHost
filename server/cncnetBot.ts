@@ -769,13 +769,14 @@ export class CnCNetAutoHostBot {
     const flags = `0${room.password ? '1' : '0'}${closed ? '1' : '0'}00`;
     const players = room.players.map((player) => player.nick).join(',');
     const tunnel = '[DYN]';
-    const gameMode = process.env.CNCNET_RA1_GAME_MODE || 'STANDARD';
+    const mapName = process.env.CNCNET_RA1_MAP_NAME?.trim() || room.currentMap;
+    const gameMode = process.env.CNCNET_RA1_GAME_MODE || 'Standard';
     const skill = process.env.CNCNET_RA1_SKILL || '1';
     const gameOptions = process.env.CNCNET_RA1_GAME_OPTIONS || '';
-    const difficulty = process.env.CNCNET_RA1_DIFFICULTY || '0';
+    const difficulty = process.env.CNCNET_RA1_DIFFICULTY || '-1';
     const fields = [
       'B', gameVersion, String(room.maxPlayers), room.channel, room.gameTitle,
-      flags, players, room.currentMap, gameMode, tunnel, '0', skill,
+      flags, players, mapName, gameMode, tunnel, '0', skill,
       mapSha1, gameOptions, difficulty,
     ];
 
