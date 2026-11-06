@@ -118,7 +118,7 @@ export default function App() {
   // Create Room Form state (RA1 dedicated)
   const [newRoomTitle, setNewRoomTitle] = useState('[RA1] CnCNet AutoHost - Fast 1v1/2v2 [All Welcome]');
   const [newRoomMaxPlayers, setNewRoomMaxPlayers] = useState(4);
-  const [newRoomMap, setNewRoomMap] = useState('Path Beyond (2-4)');
+  const [newRoomMap, setNewRoomMap] = useState('[2] Equal Opportunity');
   const [newRoomSpeed, setNewRoomSpeed] = useState(5);
   const [newRoomCredits, setNewRoomCredits] = useState(10000);
   const [newRoomBases, setNewRoomBases] = useState(true);
