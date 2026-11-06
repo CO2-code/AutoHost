@@ -766,32 +766,6 @@ Create your first IRC room. It will be advertised in #cncnet-ra-games.
                       </div>
 
                       <div className="flex items-center gap-2 shrink-0">
-                        {selectedRoom.status === 'WAITING' ? (
-                          <button
-                            onClick={() => handleLaunchRoom(selectedRoom.id)}
-                            className="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow"
-                          >
-                            <Play className="w-3.5 h-3.5" />
-                            Force Launch
-                          </button>
-                        ) : selectedRoom.status === 'COUNTDOWN' ? (
-                          <button
-                            onClick={() => handleAbortCountdown(selectedRoom.id)}
-                            className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-red-300 font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow"
-                          >
-                            <XCircle className="w-3.5 h-3.5" />
-                            Abort ({selectedRoom.countdownSeconds}s)
-                          </button>
-                        ) : (
-                          <button
-                            onClick={() => handleResetRoom(selectedRoom.id)}
-                            className="px-3 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow"
-                          >
-                            <RotateCcw className="w-3.5 h-3.5" />
-                            Reset for Next Match
-                          </button>
-                        )}
-
                         <button
                           onClick={() => handleCloseRoom(selectedRoom.id)}
                           className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-red-950/60 text-slate-400 hover:text-red-400 border border-slate-700 text-xs font-semibold cursor-pointer"
@@ -838,7 +812,7 @@ Create your first IRC room. It will be advertised in #cncnet-ra-games.
                           Connected Commanders ({selectedRoom.players.length}/{selectedRoom.maxPlayers})
                         </h4>
                         <span className="text-[11px] text-slate-400">
-                          Auto-launches at {selectedRoom.minPlayersToLaunch}+ ready commanders
+                          Room is open to players
                         </span>
                       </div>
 
@@ -1306,8 +1280,7 @@ Create your first IRC room. It will be advertised in #cncnet-ra-games.
                   {hostingLogs.length > 0 ? (
                     hostingLogs.map((log) => {
                       let badge = 'bg-slate-800 text-slate-300';
-                      if (log.type === 'MATCH_LAUNCHED') badge = 'bg-red-950 text-red-300 border border-red-800';
-                      else if (log.type === 'PLAYER_READY') badge = 'bg-emerald-950 text-emerald-300 border border-emerald-800';
+                      if (log.type === 'PLAYER_READY') badge = 'bg-emerald-950 text-emerald-300 border border-emerald-800';
                       else if (log.type === 'PLAYER_JOIN') badge = 'bg-cyan-950 text-cyan-300 border border-cyan-800';
 
                       return (
@@ -1433,26 +1406,6 @@ Create your first IRC room. It will be advertised in #cncnet-ra-games.
                 </button>
               </div>
 
-              <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 flex flex-col justify-between">
-                <div>
-                  <h4 className="font-bold text-white flex items-center gap-2 mb-1">
-                    <Flame className="w-4 h-4 text-amber-400" />
-                    Trigger Auto-Launch
-                  </h4>
-                  <p className="text-[11px] text-slate-400 mb-3">
-                    Broadcasts match launch and tunnel endpoints to all players.
-                  </p>
-                  <div className="text-[11px] text-slate-500 mb-3">
-                    Dispatches <code className="text-slate-300">\x01LAUNCH\x01</code> payload
-                  </div>
-                </div>
-                <button
-                  onClick={() => handleSimulate('SIM_FORCE_LAUNCH')}
-                  className="w-full py-2 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded cursor-pointer"
-                >
-                  Trigger Launch Countdown
-                </button>
-              </div>
             </div>
           </div>
         )}
