@@ -10,7 +10,7 @@ export interface GameDefinition {
   packageRepo: 'https://github.com/CnCNet/cncnet-ra-client-package';
   lobbyChannel: string;
   announcementChannel: string;
-  announcementChannelKey: string;
+  lobbyChannelKey: string;
   defaultMaps: string[];
   defaultTitle: string;
   defaultMaxPlayers: number;
@@ -22,7 +22,7 @@ export const RA1_DEFINITION: GameDefinition = {
   packageRepo: 'https://github.com/CnCNet/cncnet-ra-client-package',
   lobbyChannel: '#cncnet-ra',
   announcementChannel: '#cncnet-ra-games',
-  announcementChannelKey: 'ra1-derp',
+  lobbyChannelKey: 'ra1-derp',
   defaultMaps: [
     'Path Beyond (2-4)',
     'North by Northwest (2-4)',
@@ -74,7 +74,7 @@ export interface HostedRoom {
   gameTitle: string;
   channel: string;
   announcementChannel: string;
-  announcementChannelKey: string;
+  lobbyChannelKey: string;
   lobbyChannel: string;
   password?: string;
   maxPlayers: number;
@@ -103,7 +103,6 @@ export interface CnCNetBotConfig {
   nick: string;
   realName: string;
   announcementChannel: string;
-  announcementChannelKey: string;
   autoReconnect: boolean;
   reconnectIntervalSec: number;
   maxReconnectIntervalSec: number;
@@ -179,7 +178,6 @@ export class CnCNetAutoHostBot {
       nick: 'RA1_AutoHost',
       realName: 'CnCNet Red Alert 1 AutoHost Bot',
       announcementChannel: '#cncnet-ra-games',
-      announcementChannelKey: 'ra1-derp',
       autoReconnect: true,
       reconnectIntervalSec: 5,
       maxReconnectIntervalSec: 60,
@@ -248,7 +246,6 @@ export class CnCNetAutoHostBot {
       port: this.config.port,
       nick: this.currentNick,
       announcementChannel: this.config.announcementChannel,
-      announcementChannelKey: this.config.announcementChannelKey,
       connectedSince: this.connectedSince ? this.connectedSince.toISOString() : null,
       reconnectAttempts: this.reconnectAttempts,
       nextReconnectAt: this.nextReconnectAt ? this.nextReconnectAt.toISOString() : null,
@@ -482,7 +479,7 @@ export class CnCNetAutoHostBot {
       this.state = 'REGISTERED';
       this.logHosting('SYSTEM', `Registered on CnCNet IRC as '${this.currentNick}'. Joining RA1 lobby and game-list channels...`);
 
-      this.sendRaw(`JOIN ${RA1_DEFINITION.lobbyChannel} ${RA1_DEFINITION.announcementChannelKey}`);
+      this.sendRaw(`JOIN ${RA1_DEFINITION.lobbyChannel} ${RA1_DEFINITION.lobbyChannelKey}`);
       this.sendRaw(`JOIN ${this.config.announcementChannel}`);
 
       // 3. Join all active room channels
@@ -577,7 +574,7 @@ export class CnCNetAutoHostBot {
     if (command === 'NOTICE') {
       const target = params[0] || '';
       const text = trailing.trim();
-      if (target.toLowerCase() === this.currentNick.toLowerCase() && text.startsWith('\\x01') && text.endsWith('\\x01')) {
+      if (target.toLowerCase() === this.currentNick.toLowerCase() && text.startsWith('\x01') && text.endsWith('\x01')) {
         this.handleCtcpQuery(senderNick, text.slice(1, -1));
       }
       return;
@@ -629,7 +626,6 @@ export class CnCNetAutoHostBot {
       gameTitle: options.gameTitle || RA1_DEFINITION.defaultTitle,
       channel: channelName,
       announcementChannel: this.config.announcementChannel,
-      announcementChannelKey: this.config.announcementChannelKey,
       lobbyChannel: RA1_DEFINITION.lobbyChannel,
       password: options.password || undefined,
       maxPlayers: options.maxPlayers || RA1_DEFINITION.defaultMaxPlayers,
@@ -758,7 +754,7 @@ export class CnCNetAutoHostBot {
       mapSha1, gameOptions, difficulty,
     ];
 
-    this.sendRaw(`NOTICE ${this.config.announcementChannel} :\x01GAME ${fields.join(';')}\x01`);
+    this.sendRaw(`PRIVMSG ${this.config.announcementChannel} :\x01GAME ${fields.join(';')}\x01`);
   }
 
   private handlePlayerJoin(room: HostedRoom, nick: string, hostmask: string) {
@@ -906,7 +902,7 @@ export class CnCNetAutoHostBot {
       case '!info': {
         const readyList = room.players.map((p) => `${p.nick} ${p.isReady ? '[✓ Ready]' : '[...Waiting]'}`).join(', ');
         this.sendRoomMessage(room, `[STATUS] Map: ${room.currentMap} | Players (${room.players.length}/${room.maxPlayers}): ${readyList || 'None'}`);
-        this.sendRoomMessage(room, `Settings: Speed ${room.gameSpeed} | Credits $${room.startingCredits} | Tunnel: ${room.tunnel.name}`);
+        this.sendRoomMessage(room, `Settings: Speed ${room.gameSpeed} | Credits ${room.startingCredits}`);
         break;
       }
 
