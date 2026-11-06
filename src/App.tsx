@@ -153,6 +153,7 @@ export default function App() {
   const [configInterval, setConfigInterval] = useState(30);
   const [configGameVersion, setConfigGameVersion] = useState('');
   const [apiToken, setApiToken] = useState(() => localStorage.getItem('autohost-api-token') || '');
+  const configLoadedRef = useRef(false);
 
   const apiFetch = (input: RequestInfo | URL, init: RequestInit = {}) => {
     const headers = new Headers(init.headers || {});
@@ -189,13 +190,14 @@ export default function App() {
         }
         if (json.gameDefinition) setGameDef(json.gameDefinition);
         if (json.tunnels) setTunnels(json.tunnels);
-        if (json.config) {
+        if (json.config && !configLoadedRef.current) {
           setConfigNick(json.config.nick);
           setConfigServer(json.config.server);
           setConfigPort(json.config.port);
           setConfigUseSsl(json.config.useSsl);
           setConfigInterval(json.config.announcementIntervalSec);
           setConfigGameVersion(json.config.gameVersion || '');
+          configLoadedRef.current = true;
         }
       }
     } catch (err) {
@@ -743,7 +745,7 @@ export default function App() {
                 <Gamepad2 className="w-12 h-12 text-slate-600 mb-3" />
                 <h3 className="text-base font-bold text-white">No Active RA1 Rooms</h3>
                 <p className="text-xs text-slate-400 max-w-md mt-1 mb-4">
-                  Spawn your first Red Alert 1 match room. It will announce into #cncnet-ra-games with key ra1-derp!
+                  Create an RA1 IRC room. It will be listed in #cncnet-ra-games; the lobby channel key is only used for #cncnet-ra.
                 </p>
                 <button
                   onClick={() => setActiveTab('create')}
@@ -849,7 +851,7 @@ export default function App() {
                             className="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow"
                           >
                             <Play className="w-3.5 h-3.5" />
-                            Force Launch
+                            Start Countdown
                           </button>
                         ) : selectedRoom.status === 'COUNTDOWN' ? (
                           <button
@@ -886,10 +888,10 @@ export default function App() {
                           <Flame className="w-5 h-5 text-red-400 animate-bounce" />
                           <div>
                             <strong className="text-sm font-bold block text-red-300">
-                              ⚡ Red Alert 1 Launch Countdown in Progress!
+                              ⚡ RA1 Room Countdown in Progress!
                             </strong>
                             <p className="text-xs text-red-300/80">
-                              All commanders ready. Sending launch packets to cncnet-ra-client-package spawners...
+                              Countdown only. A local Windows RA1 host agent is still required to negotiate the tunnel and start the game.
                             </p>
                           </div>
                         </div>
@@ -935,7 +937,7 @@ export default function App() {
                           Connected Commanders ({selectedRoom.players.length}/{selectedRoom.maxPlayers})
                         </h4>
                         <span className="text-[11px] text-slate-400">
-                          Auto-launches at {selectedRoom.minPlayersToLaunch}+ ready commanders
+                          Starts countdown when {selectedRoom.minPlayersToLaunch}+ commanders are ready
                         </span>
                       </div>
 
@@ -1575,10 +1577,10 @@ export default function App() {
                     Trigger Auto-Launch
                   </h4>
                   <p className="text-[11px] text-slate-400 mb-3">
-                    Broadcasts match launch and tunnel endpoints to all players.
+                    Tests the room countdown only. It does not launch the RA1 game or negotiate a tunnel.
                   </p>
                   <div className="text-[11px] text-slate-500 mb-3">
-                    Dispatches <code className="text-slate-300">\x01LAUNCH\x01</code> payload
+                    No fake LAUNCH CTCP is sent; a local game-host agent is needed.
                   </div>
                 </div>
                 <button
