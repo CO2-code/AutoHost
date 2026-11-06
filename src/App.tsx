@@ -1087,7 +1087,6 @@ Create your first IRC room. It will be advertised in #cncnet-ra-games.
                 </div>
 
                 <div>
-                <div>
                   <label className="block font-bold text-slate-300 mb-1">Game Speed</label>
                   <select
                     value={newRoomSpeed}
@@ -1113,17 +1112,14 @@ Create your first IRC room. It will be advertised in #cncnet-ra-games.
                     <option value={20000}>$20,000</option>
                   </select>
                 </div>
-              </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
                 <div>
                   <label className="block font-bold text-slate-300 mb-1">Private Room Password</label>
                   <input
                     type="text"
                     value={newRoomPassword}
                     onChange={(e) => setNewRoomPassword(e.target.value)}
-                    placeholder="Leave empty for public match"
+                    placeholder="Leave empty for public room"
                     className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-red-500 font-mono"
                   />
                 </div>
