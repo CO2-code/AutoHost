@@ -717,7 +717,7 @@ export class CnCNetAutoHostBot {
     const gameOptions = process.env.CNCNET_RA1_GAME_OPTIONS?.trim() || '2305,0,0,3,10,0';
     const difficulty = process.env.CNCNET_RA1_DIFFICULTY || '-1';
     const fields = [
-      'B', gameVersion, String(room.maxPlayers), room.channel, room.gameTitle,
+      'A', gameVersion, String(room.maxPlayers), room.channel, room.gameTitle,
       flags, players, mapName, gameMode, tunnel, '0', skill,
       mapSha1, gameOptions, difficulty,
     ];
