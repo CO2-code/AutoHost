@@ -1091,7 +1091,7 @@ export class CnCNetAutoHostBot {
     });
 
     this.sendRoomMessage(room, `════════════════════════════════════════════════════`);
-    this.sendRoomMessage(room, `⚡ ALL COMMANDERS READY! Launching Red Alert 1 in 5 seconds...`);
+    this.sendRoomMessage(room, `⚡ ALL COMMANDERS READY! Room countdown ends in 5 seconds...`);
     this.sendRoomMessage(room, `(Type !unready to abort countdown)`);
     this.sendRoomMessage(room, `════════════════════════════════════════════════════`);
 
@@ -1108,7 +1108,7 @@ export class CnCNetAutoHostBot {
       room.countdownSeconds--;
 
       if (room.countdownSeconds > 0) {
-        this.sendRoomMessage(room, `Launching in ${room.countdownSeconds}...`);
+        this.sendRoomMessage(room, `Countdown: ${room.countdownSeconds}...`);
       } else {
         clearInterval(room.countdownTimerId);
         room.countdownTimerId = undefined;
