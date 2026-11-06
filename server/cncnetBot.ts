@@ -713,7 +713,7 @@ export class CnCNetAutoHostBot {
     const tunnel = '[DYN]';
     const mapName = configuredMapName || room.currentMap;
     const gameMode = process.env.CNCNET_RA1_GAME_MODE || 'Standard';
-    const skill = process.env.CNCNET_RA1_SKILL || '1';
+    const skill = process.env.CNCNET_RA1_SKILL || '0';
     const gameOptions = process.env.CNCNET_RA1_GAME_OPTIONS || '';
     const difficulty = process.env.CNCNET_RA1_DIFFICULTY || '-1';
     const fields = [
