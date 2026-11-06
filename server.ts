@@ -21,11 +21,10 @@ const cncnetBot = new CnCNetAutoHostBot({
   nick: 'RA1_AutoHost',
   realName: 'CnCNet Red Alert 1 AutoHost Bot',
   announcementChannel: '#cncnet-ra-games',
-  announcementChannelKey: 'ra1-derp',
   autoReconnect: true,
   reconnectIntervalSec: 5,
   maxReconnectIntervalSec: 60,
-  announcementIntervalSec: 15,
+  announcementIntervalSec: 30,
 });
 
 // Auto-connect on server launch
