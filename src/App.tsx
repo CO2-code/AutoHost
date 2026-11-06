@@ -41,7 +41,6 @@ export interface GameDefinition {
   packageRepo: string;
   lobbyChannel: string;
   announcementChannel: string;
-  announcementChannelKey: string;
   defaultMaps: string[];
   defaultTitle: string;
   defaultMaxPlayers: number;
@@ -518,7 +517,7 @@ export default function App() {
                 className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-red-600 hover:bg-red-500 text-white font-bold flex items-center gap-1.5 shadow transition-colors cursor-pointer"
               >
                 <PlusCircle className="w-3.5 h-3.5" />
-                Spawn RA1 Room
+                Create IRC Room
               </button>
             </div>
           </div>
@@ -535,7 +534,7 @@ export default function App() {
             </div>
             <div>
               <span className="font-bold text-white block">
-                Dedicated Command & Conquer: Red Alert 1 Match Hosting
+                Dedicated Command & Conquer: Red Alert 1 IRC Rooms
               </span>
               <span className="text-slate-300">
 Announces IRC room listings in #cncnet-ra-games. The game-list channel is public; the lobby channel key is separate.
@@ -1368,7 +1367,7 @@ Create your first IRC room. It will be advertised in #cncnet-ra-games.
                     Toggle Player Ready
                   </h4>
                   <p className="text-[11px] text-slate-400 mb-3">
-                    Marks the simulated commander as ready; no game is launched.
+                    Marks the simulated commander as ready for lobby tracking only.
                   </p>
                   <div className="text-[11px] text-slate-500 mb-3">
                     Room: {selectedRoom ? selectedRoom.channel : 'active room'}
