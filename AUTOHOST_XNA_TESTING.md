@@ -29,7 +29,7 @@ The map hash setting currently represents one map. Do not rotate to another map 
 
 ## Protocol note
 
-A captured private `CTCP reply GAME A;...` from a client is useful evidence of that client's room details, but it is not by itself proof of the game-list broadcast format. The current XNA client source uses protocol revision `B` and parses the game-list entry as 15 fields. Keep the client version and map metadata grounded in the actual client build being tested.
+The captured `CTCP reply GAME A;...` is useful evidence of the room details reported by your `0.1.2` client, but it is not by itself proof that the game-list broadcast uses revision A. The current XNA client source uses protocol revision `B` and parses the game-list entry as 15 fields. The capture reports version `0.1.2`, map `[2] Equal Opportunity`, and SHA-1 `cd454a0a7849d65bbc4a78e49ad7fbae5323623d`. Use that hash only when advertising that exact map; it must not be reused for the default `Path Beyond` map or any other map. Keep the game-list broadcast at revision B unless the client parser being tested is confirmed to expect another revision.
 
 ## Explicit limitation
 
