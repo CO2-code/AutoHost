@@ -1,4 +1,5 @@
 import express from 'express';
+import { timingSafeEqual } from 'node:crypto';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
@@ -10,6 +11,7 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+const API_TOKEN = process.env.AUTOHOST_API_TOKEN?.trim() || '';
 
 app.use(express.json());
 
@@ -21,11 +23,14 @@ const cncnetBot = new CnCNetAutoHostBot({
   nick: 'RA1_AutoHost',
   realName: 'CnCNet Red Alert 1 AutoHost Bot',
   announcementChannel: '#cncnet-ra-games',
-  announcementChannelKey: 'ra1-derp',
+  lobbyChannelKey: 'ra1-derp',
+  gameVersion: process.env.CNCNET_GAME_VERSION?.trim() || '',
+  gameMode: process.env.CNCNET_GAME_MODE?.trim() || 'Custom',
+  skillLevel: Number.parseInt(process.env.CNCNET_SKILL_LEVEL || '0', 10),
   autoReconnect: true,
   reconnectIntervalSec: 5,
   maxReconnectIntervalSec: 60,
-  announcementIntervalSec: 15,
+  announcementIntervalSec: 30,
 });
 
 // Auto-connect on server launch
@@ -36,6 +41,21 @@ try {
 }
 
 // ======================== API ROUTES ========================
+
+app.use('/api', (req, res, next) => {
+  if (req.method === 'GET' && req.path === '/status') return next();
+  if (!API_TOKEN) {
+    return res.status(503).json({ success: false, error: 'AUTOHOST_API_TOKEN is not configured on the server.' });
+  }
+
+  const authorization = req.get('authorization') || '';
+  const providedToken = Buffer.from(authorization.toLowerCase().startsWith('bearer ') ? authorization.slice(7).trim() : '');
+  const expectedToken = Buffer.from(API_TOKEN);
+  if (providedToken.length !== expectedToken.length || !timingSafeEqual(providedToken, expectedToken)) {
+    return res.status(401).json({ success: false, error: 'Missing or invalid API token.' });
+  }
+  next();
+});
 
 // 1. Status & Overview
 app.get('/api/status', (req, res) => {
@@ -79,14 +99,17 @@ app.post('/api/bot/reconnect', (req, res) => {
 
 app.post('/api/bot/config', (req, res) => {
   try {
-    const { server, port, useSsl, nick, autoReconnect, announcementIntervalSec } = req.body || {};
+    const { server, port, useSsl, nick, autoReconnect, announcementIntervalSec, gameVersion, gameMode, skillLevel } = req.body || {};
     const updates: any = {};
     if (server !== undefined) updates.server = server;
     if (port !== undefined) updates.port = Number(port);
     if (useSsl !== undefined) updates.useSsl = Boolean(useSsl);
     if (nick !== undefined) updates.nick = nick.trim();
     if (autoReconnect !== undefined) updates.autoReconnect = Boolean(autoReconnect);
-    if (announcementIntervalSec !== undefined) updates.announcementIntervalSec = Number(announcementIntervalSec);
+    if (announcementIntervalSec !== undefined) updates.announcementIntervalSec = Math.max(30, Math.min(60, Number(announcementIntervalSec)));
+    if (gameVersion !== undefined) updates.gameVersion = String(gameVersion).trim();
+    if (gameMode !== undefined) updates.gameMode = String(gameMode).trim();
+    if (skillLevel !== undefined && Number.isInteger(Number(skillLevel))) updates.skillLevel = Number(skillLevel);
 
     cncnetBot.updateConfig(updates);
     res.json({ success: true, message: 'Configuration saved.', config: cncnetBot.getConfig() });
@@ -103,7 +126,8 @@ app.get('/api/rooms', (req, res) => {
 app.post('/api/rooms/create', (req, res) => {
   try {
     const room = cncnetBot.createRoom(req.body);
-    res.json({ success: true, room });
+    const { password, channelKey, ...publicRoom } = room;
+    res.json({ success: true, room: publicRoom });
   } catch (err: any) {
     res.status(400).json({ success: false, error: err.message });
   }
@@ -136,8 +160,9 @@ app.post('/api/rooms/launch', (req, res) => {
   try {
     const room = cncnetBot.getRoom(roomId);
     if (!room) throw new Error('Room not found');
-    cncnetBot.startLaunchCountdown(room, 'Manual launch triggered from Web Dashboard');
-    res.json({ success: true, message: 'Launch countdown started!' });
+    const started = cncnetBot.startLaunchCountdown(room, 'Manual launch triggered from Web Dashboard');
+    if (!started) throw new Error(`Countdown could not start. At least ${room.minPlayersToLaunch} players must be in the room, and no countdown may already be running.`);
+    res.json({ success: true, message: 'Launch countdown started.' });
   } catch (err: any) {
     res.status(400).json({ success: false, error: err.message });
   }
