@@ -73,6 +73,7 @@ export interface HostedRoom {
   fogOfWar: boolean;
   shroud: boolean;
   status: 'WAITING' | 'PLAYING';
+  isLocked: boolean;
   players: RoomPlayer[];
   mapVotes: Record<string, number>;
   createdAt: string;
@@ -331,6 +332,43 @@ export default function App() {
       }
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  const handleSetRoomLocked = async (roomId: string, locked: boolean) => {
+    try {
+      const res = await fetch('/api/rooms/lock', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ roomId, locked }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || 'Failed to change room lock');
+        return;
+      }
+      await fetchStatus();
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
+
+  const handleLaunchRoom = async (roomId: string) => {
+    if (!confirm('Start the IRC room handoff? The bot will create a replacement room in 30 seconds. XNA clients handle the actual game start.')) return;
+    try {
+      const res = await fetch('/api/rooms/launch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ roomId }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || 'Failed to launch room');
+        return;
+      }
+      await fetchStatus();
+    } catch (err: any) {
+      alert(err.message);
     }
   };
 
@@ -761,6 +799,24 @@ Create your first IRC room. It will be advertised in #cncnet-ra-games.
                         )}
 
                         <button
+                          onClick={() => handleSetRoomLocked(selectedRoom.id, !selectedRoom.isLocked)}
+                          disabled={isLoading || selectedRoom.status === 'PLAYING'}
+                          className={`px-2.5 py-1.5 rounded-lg border text-xs font-semibold flex items-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${selectedRoom.isLocked ? 'bg-amber-950/60 hover:bg-amber-950 text-amber-300 border-amber-800' : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'}`}
+                          title={selectedRoom.isLocked ? 'Unlock room' : 'Lock room using IRC MODE +i'}
+                        >
+                          <Shield className="w-3.5 h-3.5" />
+                          {selectedRoom.isLocked ? 'Unlock Room' : 'Lock Room'}
+                        </button>
+                        <button
+                          onClick={() => handleLaunchRoom(selectedRoom.id)}
+                          disabled={isLoading || selectedRoom.status === 'PLAYING' || !selectedRoom.isLocked}
+                          className="px-2.5 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white border border-red-500 text-xs font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                          title={selectedRoom.isLocked ? 'Start IRC room handoff' : 'Lock the room before launching'}
+                        >
+                          <Zap className="w-3.5 h-3.5" />
+                          Launch Room
+                        </button>
+                        <button
                           onClick={() => handleCloseRoom(selectedRoom.id)}
                           className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-red-950/60 text-slate-400 hover:text-red-400 border border-slate-700 text-xs font-semibold cursor-pointer"
                           title="Close Room"
@@ -805,8 +861,8 @@ Create your first IRC room. It will be advertised in #cncnet-ra-games.
                           <Users className="w-3.5 h-3.5 text-red-400" />
                           Connected Commanders ({selectedRoom.players.length}/{selectedRoom.maxPlayers})
                         </h4>
-                        <span className="text-[11px] text-slate-400">
-                          Room is open to players
+                        <span className="text-[11px] ${selectedRoom.isLocked ? 'text-amber-300' : 'text-slate-400'}">
+                          {selectedRoom.isLocked ? 'Room is locked to new players' : 'Room is open to players'}
                         </span>
                       </div>
 
