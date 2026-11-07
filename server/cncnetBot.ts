@@ -1141,7 +1141,7 @@ export class CnCNetAutoHostBot {
         break;
       }
 
-command removal      case '!help':
+      case '!help':
       case '!commands':
       case '!h': {
         this.sendRoomMessage(room, `[RA1 COMMANDS] !ready, !unready, !maps, !vote <map>, !status, !roll, !help`);
