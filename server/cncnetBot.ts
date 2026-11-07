@@ -817,8 +817,7 @@ export class CnCNetAutoHostBot {
       return;
     }
 
-    const isClosedOrPlaying = closed || room.status === 'PLAYING';
-    const flags = `${room.isLocked ? '1' : '0'}${room.password ? '1' : '0'}${isClosedOrPlaying ? '1' : '0'}00`;
+    const flags = `${room.isLocked ? '1' : '0'}${room.password ? '1' : '0'}${closed ? '1' : '0'}00`;
     const hostAndPlayers = [this.currentNick, ...room.players.map((player) => player.nick)];
     const players = hostAndPlayers.join(',');
     const tunnel = '[DYN]';
