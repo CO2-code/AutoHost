@@ -967,6 +967,9 @@ export class CnCNetAutoHostBot {
     }
 
     if (upper === 'GO') {
+      if (player) {
+        for (const roomPlayer of room.players) roomPlayer.isHost = roomPlayer.nick.toLowerCase() === senderNick.toLowerCase();
+      }
       this.logHosting('SYSTEM', `Received XNA game settings from ${senderNick}.`, {
         roomId: room.id,
         channel: room.channel,
@@ -977,12 +980,19 @@ export class CnCNetAutoHostBot {
 
     if (upper === 'STRTD') {
       if (player) player.isInGame = true;
-      this.logHosting('SYSTEM', `Detected XNA game start from ${senderNick}; room rotation scheduled in 30 seconds.`, {
+      this.logHosting('SYSTEM', `Detected XNA game start from ${senderNick}.`, {
         roomId: room.id,
         channel: room.channel,
         nick: senderNick,
       });
-      this.scheduleRoomRotation(room);
+      if (player?.isHost) {
+        this.logHosting('SYSTEM', 'Host launch detected; room rotation scheduled in 30 seconds.', {
+          roomId: room.id,
+          channel: room.channel,
+          nick: senderNick,
+        });
+        this.scheduleRoomRotation(room);
+      }
       return;
     }
 
