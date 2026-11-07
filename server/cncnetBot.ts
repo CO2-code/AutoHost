@@ -806,18 +806,30 @@ export class CnCNetAutoHostBot {
     if (!room.isLocked) throw new Error('Lock the room before launching it.');
     if (room.status === 'PLAYING') throw new Error('This room has already been launched.');
 
-    const host = room.players.find((player) => player.isHost);
-    if (!host) throw new Error('No XNA game host has announced GO settings in this room. A player must host the game from the XNA client before launch can be requested.');
+    const players = [this.currentNick, ...room.players.map((player) => player.nick)];
+    const now = new Date();
+    const gameIdBase = `${now.getDate()}${now.getMonth() + 1}${now.getHours()}${now.getMinutes()}`;
+    const gameId = Number(`0${gameIdBase}`);
+    const startEntries = players.map((nick, index) => {
+      const playerId = createHash('sha1').update(`${nick}:${room.channel}`, 'utf8').digest().readUInt32LE(0);
+      const gamePort = 48000 - index;
+      return `${playerId};${nick};0.0.0.0:0`;
+    });
+    const startPayload = `${gameId};${startEntries.join(';')}`;
 
-    this.sendRaw(`PRIVMSG ${host.nick} :[AUTOHOST] The room is locked and the dashboard launch was requested. Please use the XNA client's Launch Game button to send the official STARTV2/STARTV3 handoff.`);
-    this.sendRoomMessage(room, `[AUTOHOST] Launch request sent to XNA host ${host.nick}. The room will rotate only after the XNA client confirms the game start.`);
+    this.sendRaw(`NOTICE ${room.channel} :\\x01STARTV3 ${startPayload}\\x01`);
+    this.sendRaw(`NOTICE ${room.channel} :\\x01STRTD\\x01`);
 
-    room.lastActivityAt = new Date().toISOString();
+    room.status = 'PLAYING';
+    room.launchedAt = new Date().toISOString();
+    room.lastActivityAt = room.launchedAt;
+    this.broadcastGameAnnouncement(room);
+    this.scheduleRoomRotation(room);
 
-    this.logHosting('SYSTEM', `Dashboard launch request forwarded to XNA host ${host.nick}. Waiting for the client's STRTD confirmation before rotating the room.`, {
+    this.logHosting('SYSTEM', `Bot sent the XNA-compatible STARTV3 launch packet for ${players.length} lobby entries.`, {
       roomId: room.id,
       channel: room.channel,
-      nick: host.nick,
+      details: `Game ID: ${gameId}; players: ${players.join(', ')}`,
     });
 
     return room;
