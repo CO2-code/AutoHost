@@ -782,6 +782,9 @@ export class CnCNetAutoHostBot {
     if (!room) throw new Error('Room not found');
     if (this.state !== 'REGISTERED') throw new Error('Bot must be connected to CnCNet IRC before changing room modes.');
     if (room.status === 'PLAYING') throw new Error('A launched room cannot be unlocked or relocked.');
+    if (!locked && room.players.length >= room.maxPlayers) {
+      throw new Error(`Cannot unlock room because the player limit (${room.maxPlayers}) has been reached.`);
+    }
 
     if (room.isLocked === locked) return room;
 
