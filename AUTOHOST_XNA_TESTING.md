@@ -29,7 +29,9 @@ The default map pool is intentionally limited to `[2] Equal Opportunity` because
 
 ## Protocol note
 
-The captured `CTCP reply GAME A;...` is useful evidence of the room details reported by your `0.1.2` client, but it is not by itself proof that the game-list broadcast uses revision A. The current XNA client source uses protocol revision `B` and parses the game-list entry as 15 fields. The capture reports version `0.1.2`, map `[2] Equal Opportunity`, and SHA-1 `cd454a0a7849d65bbc4a78e49ad7fbae5323623d`. Those values are used for the default room. Keep the game-list broadcast at revision B unless the client parser being tested is confirmed to expect another revision.
+Client `ra-0.1.2` uses protocol revision `A` and strictly requires **14 parameters** (`splitMessage.Length == 14`). In revision A, the fields are:
+`GAME A;<version>;<maxPlayers>;<channel>;<title>;<flags>;<players>;<mapName>;<gameMode>;<tunnel>;<loadedGameId>;<skill>;<mapSha1>;<gameOptions>`
+Any 15th field (such as `difficulty`) causes `Ignoring CTCP game message because of an invalid amount of parameters.` on client `0.1.2`. Protocol revision `B` introduces the 15th parameter (`difficulty`). The bot now defaults to revision `A` with the exact 14 parameters and populates the host nickname in the player list.
 
 ## Explicit limitation
 

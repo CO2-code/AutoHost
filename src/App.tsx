@@ -74,11 +74,12 @@ export interface HostedRoom {
   crates: boolean;
   fogOfWar: boolean;
   shroud: boolean;
-  status: 'WAITING';
+  status: 'WAITING' | 'PLAYING';
   players: RoomPlayer[];
   mapVotes: Record<string, number>;
   createdAt: string;
   lastActivityAt: string;
+  launchedAt?: string;
 }
 
 export interface HostingLogEntry {
@@ -111,6 +112,7 @@ export default function App() {
   const [hostingLogs, setHostingLogs] = useState<HostingLogEntry[]>([]);
   const [chatLogs, setChatLogs] = useState<ChatMessageEntry[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isLaunching, setIsLaunching] = useState(false);
 
   // Chat message
   const [chatInput, setChatInput] = useState('');
@@ -345,6 +347,49 @@ export default function App() {
       if (res.ok) await fetchStatus();
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  const handleLaunchGame = async (roomId: string) => {
+    setIsLaunching(true);
+    try {
+      const res = await fetch('/api/rooms/launch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ roomId }),
+      });
+      if (res.ok) {
+        await fetchStatus();
+        await fetchChat();
+        await fetchLogs();
+      } else {
+        const err = await res.json();
+        alert(err.error || 'Failed to launch game');
+      }
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setIsLaunching(false);
+    }
+  };
+
+  const handleResetGame = async (roomId: string) => {
+    setIsLaunching(true);
+    try {
+      const res = await fetch('/api/rooms/reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ roomId }),
+      });
+      if (res.ok) {
+        await fetchStatus();
+        await fetchChat();
+        await fetchLogs();
+      }
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setIsLaunching(false);
     }
   };
 
@@ -708,10 +753,12 @@ Create your first IRC room. It will be advertised in #cncnet-ra-games.
 
                           <span
                             className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider shrink-0 ${
-                              'bg-emerald-950 text-emerald-300 border border-emerald-800'
+                              room.status === 'PLAYING'
+                                ? 'bg-red-950 text-red-300 border border-red-800 animate-pulse'
+                                : 'bg-emerald-950 text-emerald-300 border border-emerald-800'
                             }`}
                           >
-                            OPEN
+                            {room.status === 'PLAYING' ? 'PLAYING' : 'OPEN'}
                           </span>
                         </div>
 
@@ -752,6 +799,34 @@ Create your first IRC room. It will be advertised in #cncnet-ra-games.
                       </div>
 
                       <div className="flex items-center gap-2 shrink-0">
+                        {selectedRoom.status === 'PLAYING' ? (
+                          <div className="flex items-center gap-2">
+                            <span className="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-red-950/80 text-red-300 border border-red-800/80 flex items-center gap-1.5 animate-pulse">
+                              <Flame className="w-4 h-4 text-red-500" />
+                              MATCH IN PROGRESS
+                            </span>
+                            <button
+                              onClick={() => handleResetGame(selectedRoom.id)}
+                              disabled={isLaunching}
+                              className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow transition-colors"
+                              title="Reset room back to waiting state for a rematch"
+                            >
+                              <RotateCcw className="w-3.5 h-3.5" />
+                              Reset Match
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => handleLaunchGame(selectedRoom.id)}
+                            disabled={isLaunching}
+                            className="px-4 py-1.5 rounded-lg bg-gradient-to-r from-red-600 to-amber-600 hover:from-red-500 hover:to-amber-500 text-white text-xs font-black tracking-wider uppercase shadow-lg shadow-red-950/60 flex items-center gap-2 cursor-pointer transition-all transform hover:scale-[1.02] active:scale-95 disabled:opacity-50"
+                            title="Launch game for all connected commanders"
+                          >
+                            <Play className="w-4 h-4 fill-white" />
+                            {isLaunching ? 'Launching...' : 'Launch Game'}
+                          </button>
+                        )}
+
                         <button
                           onClick={() => handleCloseRoom(selectedRoom.id)}
                           className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-red-950/60 text-slate-400 hover:text-red-400 border border-slate-700 text-xs font-semibold cursor-pointer"
@@ -963,7 +1038,32 @@ Create your first IRC room. It will be advertised in #cncnet-ra-games.
             <div className="bg-slate-950 border-t border-slate-800 p-2.5 flex flex-col gap-2">
               <div className="flex items-center gap-1.5 overflow-x-auto text-[11px]">
                 <span className="text-slate-500 text-[10px] shrink-0 font-mono">RA1 Commands:</span>
+                {selectedRoom?.status === 'PLAYING' ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (selectedRoomId) handleResetGame(selectedRoomId);
+                    }}
+                    className="px-2.5 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-800 hover:bg-amber-900 cursor-pointer shrink-0 flex items-center gap-1 font-bold"
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                    Reset Match
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (selectedRoomId) handleLaunchGame(selectedRoomId);
+                    }}
+                    disabled={isLaunching}
+                    className="px-2.5 py-0.5 rounded bg-gradient-to-r from-red-600 to-amber-600 hover:from-red-500 hover:to-amber-500 text-white font-bold cursor-pointer shrink-0 flex items-center gap-1 shadow"
+                  >
+                    <Play className="w-3 h-3 fill-white" />
+                    Launch Game
+                  </button>
+                )}
                 <button
+                  type="button"
                   onClick={() => {
                     if (selectedRoomId) {
                       fetch('/api/rooms/chat', {
@@ -978,6 +1078,7 @@ Create your first IRC room. It will be advertised in #cncnet-ra-games.
                   !maps
                 </button>
                 <button
+                  type="button"
                   onClick={() => {
                     if (selectedRoomId) {
                       fetch('/api/rooms/chat', {
@@ -992,6 +1093,7 @@ Create your first IRC room. It will be advertised in #cncnet-ra-games.
                   !status
                 </button>
                 <button
+                  type="button"
                   onClick={() => {
                     if (selectedRoomId) {
                       fetch('/api/rooms/chat', {
@@ -1386,6 +1488,38 @@ Create your first IRC room. It will be advertised in #cncnet-ra-games.
                 >
                   Send Command from {simNick}
                 </button>
+              </div>
+
+              <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 flex flex-col justify-between">
+                <div>
+                  <h4 className="font-bold text-white flex items-center gap-2 mb-1">
+                    <Play className="w-4 h-4 text-emerald-400" />
+                    Simulate Match Launch
+                  </h4>
+                  <p className="text-[11px] text-slate-400 mb-3">
+                    Trigger the game launch signal and broadcast CTCP START packets to all room players.
+                  </p>
+                  <div className="text-[11px] text-slate-500 mb-3 font-mono">
+                    Room: {selectedRoom ? selectedRoom.channel : 'active room'} ({selectedRoom?.status || 'WAITING'})
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => handleSimulate('SIM_GAME_LAUNCH')}
+                    className="flex-1 py-2 bg-gradient-to-r from-red-600 to-amber-600 hover:from-red-500 hover:to-amber-500 text-white font-bold rounded cursor-pointer text-xs flex items-center justify-center gap-1.5 shadow"
+                  >
+                    <Play className="w-3.5 h-3.5 fill-white" />
+                    Launch Match
+                  </button>
+                  <button
+                    onClick={() => handleSimulate('SIM_GAME_RESET')}
+                    className="py-2 px-3 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded cursor-pointer text-xs flex items-center gap-1"
+                    title="Reset to Waiting"
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                    Reset
+                  </button>
+                </div>
               </div>
 
             </div>
