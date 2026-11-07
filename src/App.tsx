@@ -800,9 +800,9 @@ Create your first IRC room. It will be advertised in #cncnet-ra-games.
 
                         <button
                           onClick={() => handleSetRoomLocked(selectedRoom.id, !selectedRoom.isLocked)}
-                          disabled={isLoading || selectedRoom.status === 'PLAYING'}
+                          disabled={isLoading || selectedRoom.status === 'PLAYING' || (selectedRoom.isLocked && selectedRoom.players.length >= selectedRoom.maxPlayers)}
                           className={`px-2.5 py-1.5 rounded-lg border text-xs font-semibold flex items-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${selectedRoom.isLocked ? 'bg-amber-950/60 hover:bg-amber-950 text-amber-300 border-amber-800' : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'}`}
-                          title={selectedRoom.isLocked ? 'Unlock room' : 'Lock room using IRC MODE +i'}
+                          title={selectedRoom.isLocked && selectedRoom.players.length >= selectedRoom.maxPlayers ? 'Cannot unlock: player limit reached' : selectedRoom.isLocked ? 'Unlock room' : 'Lock room using IRC MODE +i'}
                         >
                           <Shield className="w-3.5 h-3.5" />
                           {selectedRoom.isLocked ? 'Unlock Room' : 'Lock Room'}
