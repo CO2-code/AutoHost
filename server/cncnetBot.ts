@@ -777,6 +777,51 @@ export class CnCNetAutoHostBot {
     this.broadcastGameAnnouncement(room);
   }
 
+  public setRoomLocked(roomId: string, locked: boolean): HostedRoom {
+    const room = this.rooms.get(roomId);
+    if (!room) throw new Error('Room not found');
+    if (this.state !== 'REGISTERED') throw new Error('Bot must be connected to CnCNet IRC before changing room modes.');
+    if (room.status === 'PLAYING') throw new Error('A launched room cannot be unlocked or relocked.');
+
+    if (room.isLocked === locked) return room;
+
+    const mode = locked ? '+i' : '-i';
+    this.sendRaw(`MODE ${room.channel} ${mode}`);
+    room.isLocked = locked;
+    room.lastActivityAt = new Date().toISOString();
+    this.broadcastGameAnnouncement(room);
+
+    this.logHosting('SYSTEM', `Room ${locked ? 'locked' : 'unlocked'} using XNA-compatible IRC mode ${mode}.`, {
+      roomId: room.id,
+      channel: room.channel,
+    });
+
+    return room;
+  }
+
+  public launchRoom(roomId: string): HostedRoom {
+    const room = this.rooms.get(roomId);
+    if (!room) throw new Error('Room not found');
+    if (this.state !== 'REGISTERED') throw new Error('Bot must be connected to CnCNet IRC before launching a room.');
+    if (!room.isLocked) throw new Error('Lock the room before launching it.');
+    if (room.status === 'PLAYING') throw new Error('This room has already been launched.');
+
+    room.status = 'PLAYING';
+    room.launchedAt = new Date().toISOString();
+    room.lastActivityAt = room.launchedAt;
+
+    this.sendRoomMessage(room, '[AUTOHOST] Launch confirmed. Players remain in this room; the bot will create a replacement room in 30 seconds.');
+    this.broadcastGameAnnouncement(room);
+
+    this.logHosting('GAME_LAUNCHED', 'Room launch handoff started from the dashboard. The bot will rotate this IRC room in 30 seconds.', {
+      roomId: room.id,
+      channel: room.channel,
+    });
+
+    this.scheduleRoomRotation(room);
+    return room;
+  }
+
   private joinAllActiveRooms() {
     for (const room of this.rooms.values()) {
       this.joinRoomChannel(room);
@@ -961,7 +1006,7 @@ export class CnCNetAutoHostBot {
         channel: room.channel,
         nick: senderNick,
       });
-      if (player.isHost) this.scheduleRoomRotation(room);
+      this.scheduleRoomRotation(room);
     } else if (cleanMsg === 'RETURN') {
       player.isInGame = false;
       player.isReady = false;
