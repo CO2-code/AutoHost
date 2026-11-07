@@ -944,7 +944,8 @@ export class CnCNetAutoHostBot {
       for (const roomPlayer of room.players) {
         roomPlayer.isHost = roomPlayer.nick.toLowerCase() === senderNick.toLowerCase();
       }
-      this.logHosting('SYSTEM', `Received XNA GO settings from host ${senderNick}.`, {
+      this.sendRaw(`MODE ${room.channel} +o ${senderNick}`);
+      this.logHosting('SYSTEM', `Identified XNA host ${senderNick} and granted channel operator status.`, {
         roomId: room.id,
         channel: room.channel,
         nick: senderNick,
