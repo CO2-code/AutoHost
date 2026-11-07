@@ -812,13 +812,12 @@ export class CnCNetAutoHostBot {
     const gameId = Number(`0${gameIdBase}`);
     const startEntries = players.map((nick, index) => {
       const playerId = createHash('sha1').update(`${nick}:${room.channel}`, 'utf8').digest().readUInt32LE(0);
-      const gamePort = 48000 - index;
       return `${playerId};${nick};0.0.0.0:0`;
     });
     const startPayload = `${gameId};${startEntries.join(';')}`;
 
-    this.sendRaw(`NOTICE ${room.channel} :\\x01STARTV3 ${startPayload}\\x01`);
-    this.sendRaw(`NOTICE ${room.channel} :\\x01STRTD\\x01`);
+    this.sendRaw(`NOTICE ${room.channel} :\x01STARTV3 ${startPayload}\x01`);
+    this.sendRaw(`NOTICE ${room.channel} :\x01STRTD\x01`);
 
     room.status = 'PLAYING';
     room.launchedAt = new Date().toISOString();
