@@ -52,6 +52,7 @@ export interface RoomPlayer {
   slot: number;
   isReady: boolean;
   isHost: boolean;
+  isInGame?: boolean;
   joinedAt: string;
   hostmask?: string;
   votedMap?: string;
@@ -76,6 +77,7 @@ export interface HostedRoom {
   fogOfWar: boolean;
   shroud: boolean;
   status: 'WAITING' | 'PLAYING';
+  isLocked: boolean;
   players: RoomPlayer[];
   mapVotes: Record<string, number>;
   createdAt: string;
@@ -140,6 +142,8 @@ export class CnCNetAutoHostBot {
 
   // Active Hosted Rooms for RA1
   private rooms: Map<string, HostedRoom> = new Map();
+  private readonly postLaunchRoomRotationMs = 30000;
+  private roomRotationTimers: Map<string, NodeJS.Timeout> = new Map();
 
   // Logs and Chat History
   private hostingLogs: HostingLogEntry[] = [];
@@ -495,6 +499,29 @@ export class CnCNetAutoHostBot {
       return;
     }
 
+    if (command === 'MODE') {
+      const channel = (params[0] || '').toLowerCase();
+      const room = Array.from(this.rooms.values()).find((item) => item.channel.toLowerCase() === channel);
+      const modeString = params[1] || '';
+
+      if (room && modeString) {
+        let adding = true;
+        let changed = false;
+
+        for (const mode of modeString) {
+          if (mode === '+') adding = true;
+          else if (mode === '-') adding = false;
+          else if (mode === 'i' && room.isLocked !== adding) {
+            room.isLocked = adding;
+            changed = true;
+          }
+        }
+
+        if (changed) this.broadcastGameAnnouncement(room);
+      }
+      return;
+    }
+
     // JOIN - User joined a channel
     if (command === 'JOIN') {
       const joinedChannel = (trailing || params[0] || '').toLowerCase();
@@ -676,6 +703,7 @@ export class CnCNetAutoHostBot {
       fogOfWar: options.fogOfWar !== undefined ? options.fogOfWar : true,
       shroud: options.shroud !== undefined ? options.shroud : true,
       status: 'WAITING',
+      isLocked: false,
       players: [],
       mapVotes: {},
       createdAt: new Date().toISOString(),
@@ -702,6 +730,12 @@ export class CnCNetAutoHostBot {
   public closeRoom(roomId: string, reason = 'Host closed room') {
     const room = this.rooms.get(roomId);
     if (!room) return;
+
+    const rotationTimer = this.roomRotationTimers.get(roomId);
+    if (rotationTimer) {
+      clearTimeout(rotationTimer);
+      this.roomRotationTimers.delete(roomId);
+    }
 
     this.sendRoomMessage(room, `[HOST] Red Alert 1 room is being closed: ${reason}`);
 
@@ -741,71 +775,6 @@ export class CnCNetAutoHostBot {
 
     this.sendRoomTopic(room);
     this.broadcastGameAnnouncement(room);
-  }
-
-  public launchRoom(roomId: string): HostedRoom {
-    const room = this.rooms.get(roomId);
-    if (!room) throw new Error('Room not found');
-
-    room.status = 'PLAYING';
-    room.launchedAt = new Date().toISOString();
-    room.lastActivityAt = new Date().toISOString();
-
-    const readyPlayers = room.players.filter((p) => p.isReady);
-    const playerList = room.players.map((p) => p.nick).join(', ') || 'Commanders';
-
-    // 1. Announce match launch in channel
-    this.sendRoomMessage(
-      room,
-      `[LAUNCH] *** LAUNCHING RED ALERT 1 MATCH *** Map: ${room.currentMap} | Commanders: ${playerList} | Speed: ${room.gameSpeed}`
-    );
-    this.sendRoomMessage(room, `[LAUNCH] Initializing game spawner... Good luck commanders!`);
-
-    // 2. Transmit the CnCNet CTCP START signal to all client instances in room
-    const allParticipants = [this.currentNick, ...room.players.map((p) => p.nick)];
-    const tunnelPayload = allParticipants.map((nick) => `${nick};0.0.0.0:0`).join(';');
-    this.sendRaw(`NOTICE ${room.channel} :\x01START 0;${tunnelPayload}\x01`);
-    this.sendRaw(`PRIVMSG ${room.channel} :\x01START 0;${tunnelPayload}\x01`);
-
-    // 3. Update room topic to indicate in-progress match
-    this.sendRaw(`TOPIC ${room.channel} :B;ra;playing;${encodeURIComponent(room.currentMap)}`);
-
-    // 4. Update the game advertisement in #cncnet-ra-games to mark room as closed / in-progress
-    this.broadcastGameAnnouncement(room);
-
-    this.logHosting('GAME_LAUNCHED', `Launched RA1 match on ${room.channel}`, {
-      roomId: room.id,
-      channel: room.channel,
-      details: `Map: ${room.currentMap}, Total Players: ${room.players.length} (${readyPlayers.length} ready)`,
-    });
-
-    return room;
-  }
-
-  public resetRoom(roomId: string): HostedRoom {
-    const room = this.rooms.get(roomId);
-    if (!room) throw new Error('Room not found');
-
-    room.status = 'WAITING';
-    room.launchedAt = undefined;
-    room.lastActivityAt = new Date().toISOString();
-    for (const player of room.players) {
-      player.isReady = false;
-    }
-
-    this.sendRoomMessage(
-      room,
-      `[HOST] Match finished / Room reset. Waiting for commanders to ready up for the next match.`
-    );
-    this.sendRoomTopic(room);
-    this.broadcastGameAnnouncement(room);
-
-    this.logHosting('ROOM_RESET', `Room ${room.channel} reset to waiting state`, {
-      roomId: room.id,
-      channel: room.channel,
-    });
-
-    return room;
   }
 
   private joinAllActiveRooms() {
@@ -848,8 +817,7 @@ export class CnCNetAutoHostBot {
       return;
     }
 
-    const isClosedOrPlaying = closed || room.status === 'PLAYING';
-    const flags = `0${room.password ? '1' : '0'}${isClosedOrPlaying ? '1' : '0'}00`;
+    const flags = `${room.isLocked ? '1' : '0'}${room.password ? '1' : '0'}${closed ? '1' : '0'}00`;
     const hostAndPlayers = [this.currentNick, ...room.players.map((player) => player.nick)];
     const players = hostAndPlayers.join(',');
     const tunnel = '[DYN]';
@@ -961,26 +929,47 @@ export class CnCNetAutoHostBot {
     }
 
     const cleanMsg = ctcpMsg.trim();
-    if (cleanMsg === 'R 1') {
-      // Player clicked Ready in CnCNet client UI
-      player.isReady = true;
-      const readyCount = room.players.filter((p) => p.isReady).length;
-      this.sendRoomMessage(room, `[READY] ${senderNick} is READY! (${readyCount}/${room.players.length} ready)`);
-      this.logHosting('PLAYER_READY', `Player '${senderNick}' marked ready (via UI notice) in ${room.channel}`, {
+    if (cleanMsg.startsWith('R ')) {
+      const readyStatus = Number.parseInt(cleanMsg.substring(2).trim(), 10);
+      if (!Number.isInteger(readyStatus) || readyStatus < 0 || readyStatus > 2) return;
+      player.isReady = readyStatus > 0;
+      this.logHosting('PLAYER_READY', `Player '${senderNick}' reported XNA ready state ${readyStatus}.`, {
+        roomId: room.id,
+        channel: room.channel,
+        nick: senderNick,
+        details: readyStatus === 2 ? 'Auto-ready' : readyStatus === 1 ? 'Ready' : 'Not ready',
+      });
+      this.broadcastGameAnnouncement(room);
+    } else if (cleanMsg === 'GO' || cleanMsg.startsWith('GO ')) {
+      for (const roomPlayer of room.players) {
+        roomPlayer.isHost = roomPlayer.nick.toLowerCase() === senderNick.toLowerCase();
+      }
+      this.logHosting('SYSTEM', `Received XNA GO settings from host ${senderNick}.`, {
         roomId: room.id,
         channel: room.channel,
         nick: senderNick,
       });
-
-      if (readyCount === room.players.length && room.players.length >= 2) {
-        this.sendRoomMessage(room, `[AUTO-HOST] All commanders are READY! (${readyCount}/${room.players.length})`);
+    } else if (cleanMsg === 'STRTD') {
+      player.isInGame = true;
+      if (room.status !== 'PLAYING') {
+        room.status = 'PLAYING';
+        room.launchedAt = new Date().toISOString();
+        this.broadcastGameAnnouncement(room);
       }
-      this.broadcastGameAnnouncement(room);
-    } else if (cleanMsg === 'R 0' || cleanMsg === 'R 2') {
-      // Player clicked Unready in CnCNet client UI
+      this.logHosting('SYSTEM', `Detected XNA game start from ${senderNick}.`, {
+        roomId: room.id,
+        channel: room.channel,
+        nick: senderNick,
+      });
+      if (player.isHost) this.scheduleRoomRotation(room);
+    } else if (cleanMsg === 'RETURN') {
+      player.isInGame = false;
       player.isReady = false;
-      this.sendRoomMessage(room, `[UNREADY] ${senderNick} is no longer ready.`);
-      this.broadcastGameAnnouncement(room);
+      this.logHosting('SYSTEM', `Detected ${senderNick} returning from the game.`, {
+        roomId: room.id,
+        channel: room.channel,
+        nick: senderNick,
+      });
     } else if (cleanMsg.startsWith('FHSH ')) {
       const hash = cleanMsg.substring(5).trim();
       this.logHosting('SYSTEM', `Player '${senderNick}' synchronized map hash ${hash} in ${room.channel}`, {
@@ -989,6 +978,37 @@ export class CnCNetAutoHostBot {
         nick: senderNick,
       });
     }
+  }
+  private scheduleRoomRotation(room: HostedRoom) {
+    if (this.roomRotationTimers.has(room.id)) return;
+
+    const timer = setTimeout(() => {
+      this.roomRotationTimers.delete(room.id);
+      const activeRoom = this.rooms.get(room.id);
+      if (!activeRoom) return;
+
+      const suffix = Math.floor(Math.random() * 9000000 + 1000000);
+      const nextRoomOptions: Partial<HostedRoom> = {
+        channel: `#cncnet-ra-game${suffix}`,
+        gameTitle: activeRoom.gameTitle,
+        maxPlayers: activeRoom.maxPlayers,
+        currentMap: activeRoom.currentMap,
+        mapPool: [...activeRoom.mapPool],
+        gameSpeed: activeRoom.gameSpeed,
+        startingCredits: activeRoom.startingCredits,
+        bases: activeRoom.bases,
+        oreRegenerates: activeRoom.oreRegenerates,
+        crates: activeRoom.crates,
+        fogOfWar: activeRoom.fogOfWar,
+        shroud: activeRoom.shroud,
+        password: activeRoom.password,
+      };
+
+      this.closeRoom(activeRoom.id, 'Game started; room rotated after 30 seconds');
+      this.createRoom(nextRoomOptions);
+    }, this.postLaunchRoomRotationMs);
+
+    this.roomRotationTimers.set(room.id, timer);
   }
 
   private handlePlayerCommand(room: HostedRoom, senderNick: string, rawText: string) {
@@ -1006,8 +1026,6 @@ export class CnCNetAutoHostBot {
       else if (cmd === 'status' || cmd === 'info') cmd = '!status';
       else if (cmd === 'roll' || cmd === 'dice') cmd = '!roll';
       else if (cmd === 'ping') cmd = '!ping';
-      else if (cmd === 'launch' || cmd === 'start') cmd = '!launch';
-      else if (cmd === 'reset' || cmd === 'rematch') cmd = '!reset';
     }
     const arg = stripIrcFormatting(parts.slice(1).join(' ')).trim();
 
@@ -1122,30 +1140,10 @@ export class CnCNetAutoHostBot {
         break;
       }
 
-      case '!launch':
-      case '!start': {
-        if (room.status === 'PLAYING') {
-          this.sendRoomMessage(room, `[LAUNCH] Match is already in progress! Use dashboard to reset when finished.`);
-          return;
-        }
-        if (room.players.length === 0) {
-          this.sendRoomMessage(room, `[LAUNCH] Cannot launch: room has no commanders!`);
-          return;
-        }
-        this.launchRoom(room.id);
-        break;
-      }
-
-      case '!reset':
-      case '!rematch': {
-        this.resetRoom(room.id);
-        break;
-      }
-
       case '!help':
       case '!commands':
       case '!h': {
-        this.sendRoomMessage(room, `[RA1 COMMANDS] !ready, !unready, !maps, !vote <map>, !status, !roll, !launch, !reset, !help`);
+        this.sendRoomMessage(room, `[RA1 COMMANDS] !ready, !unready, !maps, !vote <map>, !status, !roll, !help`);
         break;
       }
     }
@@ -1288,7 +1286,7 @@ export class CnCNetAutoHostBot {
   }
 
   public simulateEvent(
-    type: 'SIM_PLAYER_JOIN' | 'SIM_PLAYER_READY' | 'SIM_PLAYER_LEAVE' | 'SIM_PLAYER_CHAT' | 'SIM_GAME_LAUNCH' | 'SIM_GAME_RESET',
+    type: 'SIM_PLAYER_JOIN' | 'SIM_PLAYER_READY' | 'SIM_PLAYER_LEAVE' | 'SIM_PLAYER_CHAT',
     payload: any = {}
   ) {
     const roomId = payload.roomId || Array.from(this.rooms.keys())[0];
@@ -1330,19 +1328,11 @@ export class CnCNetAutoHostBot {
         const isCommand =
           cleanMsg.startsWith('!') ||
           cleanMsg.startsWith('.') ||
-          /^(ready|unready|notready|r|ur|help|commands|maps|map|vote|status|info|roll|dice|ping|launch|start|reset)$/i.test(firstWord);
+          /^(ready|unready|notready|r|ur|help|commands|maps|map|vote|status|info|roll|dice|ping)$/i.test(firstWord);
 
         if (isCommand) {
           this.handlePlayerCommand(room, sender, cleanMsg);
         }
-        break;
-      }
-      case 'SIM_GAME_LAUNCH': {
-        this.launchRoom(room.id);
-        break;
-      }
-      case 'SIM_GAME_RESET': {
-        this.resetRoom(room.id);
         break;
       }
     }
