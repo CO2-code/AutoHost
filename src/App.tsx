@@ -29,6 +29,7 @@ import {
   Key,
   ExternalLink,
   MessageSquare,
+  Flame,
   Sparkles,
 } from 'lucide-react';
 
