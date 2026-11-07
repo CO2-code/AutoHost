@@ -1398,9 +1398,6 @@ Create your first IRC room. It will be advertised in #cncnet-ra-games.
                 </button>
               </div>
 
-
-              </div>
-
             </div>
           </div>
         )}
