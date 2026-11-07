@@ -941,7 +941,7 @@ export class CnCNetAutoHostBot {
         details: readyStatus === 2 ? 'Auto-ready' : readyStatus === 1 ? 'Ready' : 'Not ready',
       });
       this.broadcastGameAnnouncement(room);
-    } else if (cleanMsg === 'GO') {
+    } else if (cleanMsg === 'GO' || cleanMsg.startsWith('GO ')) {
       for (const roomPlayer of room.players) {
         roomPlayer.isHost = roomPlayer.nick.toLowerCase() === senderNick.toLowerCase();
       }
@@ -972,26 +972,6 @@ export class CnCNetAutoHostBot {
         nick: senderNick,
       });
     } else if (cleanMsg.startsWith('FHSH ')) {
-      // Player clicked Ready in CnCNet client UI
-      player.isReady = true;
-      const readyCount = room.players.filter((p) => p.isReady).length;
-      this.sendRoomMessage(room, `[READY] ${senderNick} is READY! (${readyCount}/${room.players.length} ready)`);
-      this.logHosting('PLAYER_READY', `Player '${senderNick}' marked ready (via UI notice) in ${room.channel}`, {
-        roomId: room.id,
-        channel: room.channel,
-        nick: senderNick,
-      });
-
-      if (readyCount === room.players.length && room.players.length >= 2) {
-        this.sendRoomMessage(room, `[AUTO-HOST] All commanders are READY! (${readyCount}/${room.players.length})`);
-      }
-      this.broadcastGameAnnouncement(room);
-    } else if (cleanMsg === 'R 0' || cleanMsg === 'R 2') {
-      // Player clicked Unready in CnCNet client UI
-      player.isReady = false;
-      this.sendRoomMessage(room, `[UNREADY] ${senderNick} is no longer ready.`);
-      this.broadcastGameAnnouncement(room);
-    } else if (cleanMsg.startsWith('FHSH ')) {
       const hash = cleanMsg.substring(5).trim();
       this.logHosting('SYSTEM', `Player '${senderNick}' synchronized map hash ${hash} in ${room.channel}`, {
         roomId: room.id,
@@ -1000,7 +980,6 @@ export class CnCNetAutoHostBot {
       });
     }
   }
-
   private scheduleRoomRotation(room: HostedRoom) {
     if (this.roomRotationTimers.has(room.id)) return;
 
@@ -1048,8 +1027,6 @@ export class CnCNetAutoHostBot {
       else if (cmd === 'status' || cmd === 'info') cmd = '!status';
       else if (cmd === 'roll' || cmd === 'dice') cmd = '!roll';
       else if (cmd === 'ping') cmd = '!ping';
-      else if (cmd === 'launch' || cmd === 'start') cmd = '!launch';
-      else if (cmd === 'reset' || cmd === 'rematch') cmd = '!reset';
     }
     const arg = stripIrcFormatting(parts.slice(1).join(' ')).trim();
 
