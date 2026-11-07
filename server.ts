@@ -119,6 +119,29 @@ app.post('/api/rooms/update', (req, res) => {
   }
 });
 
+app.post('/api/rooms/lock', (req, res) => {
+  const { roomId, locked } = req.body || {};
+  try {
+    if (!roomId) throw new Error('roomId is required');
+    if (typeof locked !== 'boolean') throw new Error('locked must be a boolean');
+    const room = cncnetBot.setRoomLocked(roomId, locked);
+    res.json({ success: true, room, message: locked ? 'Room locked.' : 'Room unlocked.' });
+  } catch (err: any) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/rooms/launch', (req, res) => {
+  const { roomId } = req.body || {};
+  try {
+    if (!roomId) throw new Error('roomId is required');
+    const room = cncnetBot.launchRoom(roomId);
+    res.json({ success: true, room, message: 'Room launch handoff started. A replacement room will be created in 30 seconds.' });
+  } catch (err: any) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
 app.post('/api/rooms/close', (req, res) => {
   const { roomId, reason } = req.body || {};
   try {
