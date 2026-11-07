@@ -397,8 +397,7 @@ export class CnCNetAutoHostBot {
     this.config.autoReconnect = true;
     this.reconnectAttempts = 0;
     this.disconnect('Manual reconnect requested', true);
-    setTimeout(() => {
-      this.connect();
+    setTimeout(() => {      this.connect();
     }, 1500);
   }
 
@@ -797,7 +796,6 @@ export class CnCNetAutoHostBot {
       roomId: room.id,
       channel: room.channel,
     });
-
     return room;
   }
 
@@ -808,19 +806,20 @@ export class CnCNetAutoHostBot {
     if (!room.isLocked) throw new Error('Lock the room before launching it.');
     if (room.status === 'PLAYING') throw new Error('This room has already been launched.');
 
-    room.status = 'PLAYING';
-    room.launchedAt = new Date().toISOString();
-    room.lastActivityAt = room.launchedAt;
+    const host = room.players.find((player) => player.isHost);
+    if (!host) throw new Error('No XNA game host has announced GO settings in this room. A player must host the game from the XNA client before launch can be requested.');
 
-    this.sendRoomMessage(room, '[AUTOHOST] Launch confirmed. Players remain in this room; the bot will create a replacement room in 30 seconds.');
-    this.broadcastGameAnnouncement(room);
+    this.sendRaw(`PRIVMSG ${host.nick} :[AUTOHOST] The room is locked and the dashboard launch was requested. Please use the XNA client's Launch Game button to send the official STARTV2/STARTV3 handoff.`);
+    this.sendRoomMessage(room, `[AUTOHOST] Launch request sent to XNA host ${host.nick}. The room will rotate only after the XNA client confirms the game start.`);
 
-    this.logHosting('GAME_LAUNCHED', 'Room launch handoff started from the dashboard. The bot will rotate this IRC room in 30 seconds.', {
+    room.lastActivityAt = new Date().toISOString();
+
+    this.logHosting('SYSTEM', `Dashboard launch request forwarded to XNA host ${host.nick}. Waiting for the client's STRTD confirmation before rotating the room.`, {
       roomId: room.id,
       channel: room.channel,
+      nick: host.nick,
     });
 
-    this.scheduleRoomRotation(room);
     return room;
   }
 
@@ -1197,7 +1196,6 @@ export class CnCNetAutoHostBot {
   }
 
   // ======================== CTCP ========================
-
   private handleCtcpQuery(senderNick: string, ctcpCommand: string) {
     const upper = ctcpCommand.toUpperCase().trim();
     if (upper === 'VERSION') {
