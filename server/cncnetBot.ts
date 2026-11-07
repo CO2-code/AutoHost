@@ -1335,6 +1335,6 @@ export class CnCNetAutoHostBot {
         }
         break;
       }
-sim fake actions    }
+    }
   }
 }
