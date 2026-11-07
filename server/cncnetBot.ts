@@ -34,6 +34,7 @@ export interface RoomPlayer {
   slot: number;
   isReady: boolean;
   isHost: boolean;
+  isInGame?: boolean;
   joinedAt: string;
   hostmask?: string;
   votedMap?: string;
@@ -58,6 +59,7 @@ export interface HostedRoom {
   fogOfWar: boolean;
   shroud: boolean;
   status: 'WAITING';
+  isLocked: boolean;
   players: RoomPlayer[];
   mapVotes: Record<string, number>;
   createdAt: string;
@@ -116,6 +118,8 @@ export class CnCNetAutoHostBot {
 
   // Active Hosted Rooms for RA1
   private rooms: Map<string, HostedRoom> = new Map();
+  private readonly postLaunchRoomRotationMs = 30000;
+  private roomRotationTimers: Map<string, NodeJS.Timeout> = new Map();
 
   // Logs and Chat History
   private hostingLogs: HostingLogEntry[] = [];
@@ -472,6 +476,36 @@ export class CnCNetAutoHostBot {
     }
 
     // JOIN - User joined a channel
+    if (command === 'MODE') {
+      const channel = (params[0] || '').toLowerCase();
+      const room = Array.from(this.rooms.values()).find((item) => item.channel.toLowerCase() === channel);
+      const modeString = params[1] || '';
+
+      if (room && modeString) {
+        let adding = true;
+        let changed = false;
+
+        for (const mode of modeString) {
+          if (mode === '+') adding = true;
+          else if (mode === '-') adding = false;
+          else if (mode === 'i' && room.isLocked !== adding) {
+            room.isLocked = adding;
+            changed = true;
+          }
+        }
+
+        if (changed) {
+          this.logHosting('SYSTEM', `Room ${room.channel} ${room.isLocked ? 'locked' : 'unlocked'} by ${senderNick || 'server'}.`, {
+            roomId: room.id,
+            channel: room.channel,
+            nick: senderNick,
+          });
+          this.broadcastGameAnnouncement(room);
+        }
+      }
+      return;
+    }
+
     if (command === 'JOIN') {
       const joinedChannel = (trailing || params[0] || '').toLowerCase();
 
@@ -542,8 +576,15 @@ export class CnCNetAutoHostBot {
     if (command === 'NOTICE') {
       const target = params[0] || '';
       const text = trailing.trim();
-      if (target.toLowerCase() === this.currentNick.toLowerCase() && text.startsWith('\x01') && text.endsWith('\x01')) {
-        this.handleCtcpQuery(senderNick, text.slice(1, -1));
+
+      if (text.startsWith('\x01') && text.endsWith('\x01')) {
+        const ctcpCommand = text.slice(1, -1);
+        if (target.toLowerCase() === this.currentNick.toLowerCase()) {
+          this.handleCtcpQuery(senderNick, ctcpCommand);
+        } else {
+          const room = Array.from(this.rooms.values()).find((item) => item.channel.toLowerCase() === target.toLowerCase());
+          if (room) this.handleRoomCtcp(room, senderNick, ctcpCommand);
+        }
       }
       return;
     }
@@ -555,7 +596,13 @@ export class CnCNetAutoHostBot {
 
       // CTCP query (\x01PING, \x01VERSION, \x01TIME)
       if (text.startsWith('\x01') && text.endsWith('\x01')) {
-        this.handleCtcpQuery(senderNick, text.slice(1, -1));
+        const ctcpCommand = text.slice(1, -1);
+        if (target.toLowerCase() === this.currentNick.toLowerCase()) {
+          this.handleCtcpQuery(senderNick, ctcpCommand);
+        } else {
+          const room = Array.from(this.rooms.values()).find((item) => item.channel.toLowerCase() === target.toLowerCase());
+          if (room) this.handleRoomCtcp(room, senderNick, ctcpCommand);
+        }
         return;
       }
 
@@ -607,6 +654,7 @@ export class CnCNetAutoHostBot {
       fogOfWar: options.fogOfWar !== undefined ? options.fogOfWar : true,
       shroud: options.shroud !== undefined ? options.shroud : true,
       status: 'WAITING',
+      isLocked: false,
       players: [],
       mapVotes: {},
       createdAt: new Date().toISOString(),
@@ -633,6 +681,12 @@ export class CnCNetAutoHostBot {
   public closeRoom(roomId: string, reason = 'Host closed room') {
     const room = this.rooms.get(roomId);
     if (!room) return;
+
+    const rotationTimer = this.roomRotationTimers.get(roomId);
+    if (rotationTimer) {
+      clearTimeout(rotationTimer);
+      this.roomRotationTimers.delete(roomId);
+    }
 
     this.sendRoomMessage(room, `[HOST] Red Alert 1 room is being closed: ${reason}`);
 
@@ -708,7 +762,7 @@ export class CnCNetAutoHostBot {
       return;
     }
 
-    const flags = `0${room.password ? '1' : '0'}${closed ? '1' : '0'}00`;
+    const flags = `${room.isLocked ? '1' : '0'}${room.password ? '1' : '0'}${closed ? '1' : '0'}00`;
     const players = room.players.map((player) => player.nick).join(',');
     const tunnel = '[DYN]';
     const mapName = configuredMapName || room.currentMap;
@@ -741,7 +795,8 @@ export class CnCNetAutoHostBot {
       nick,
       slot: newSlot,
       isReady: false,
-      isHost: false,
+      isHost: !room.players.some((existing) => existing.isHost),
+      isInGame: false,
       joinedAt: new Date().toISOString(),
       hostmask,
     };
@@ -772,6 +827,8 @@ export class CnCNetAutoHostBot {
     room.players = room.players.filter((p) => p.nick.toLowerCase() !== nick.toLowerCase());
 
     if (room.players.length !== initialLen) {
+      if (!room.players.some((player) => player.isHost) && room.players.length > 0) room.players[0].isHost = true;
+
       this.logHosting('PLAYER_PART', `Player '${nick}' left ${room.channel}`, {
         roomId: room.id,
         channel: room.channel,
@@ -889,6 +946,88 @@ export class CnCNetAutoHostBot {
   }
 
   // ======================== CTCP ========================
+
+  private handleRoomCtcp(room: HostedRoom, senderNick: string, ctcpCommand: string) {
+    const [command, ...args] = ctcpCommand.trim().split(/\s+/);
+    const upper = (command || '').toUpperCase();
+    const player = room.players.find((item) => item.nick.toLowerCase() === senderNick.toLowerCase());
+
+    if (upper === 'R') {
+      const readyStatus = Number.parseInt(args[0] || '', 10);
+      if (!player || !Number.isInteger(readyStatus) || readyStatus < 0 || readyStatus > 2) return;
+
+      player.isReady = readyStatus > 0;
+      this.logHosting('PLAYER_READY', `Player '${senderNick}' reported XNA ready state ${readyStatus}.`, {
+        roomId: room.id,
+        channel: room.channel,
+        nick: senderNick,
+        details: readyStatus === 2 ? 'Auto-ready' : readyStatus === 1 ? 'Ready' : 'Not ready',
+      });
+      return;
+    }
+
+    if (upper === 'GO') {
+      this.logHosting('SYSTEM', `Received XNA game settings from ${senderNick}.`, {
+        roomId: room.id,
+        channel: room.channel,
+        nick: senderNick,
+      });
+      return;
+    }
+
+    if (upper === 'STRTD') {
+      if (player) player.isInGame = true;
+      this.logHosting('SYSTEM', `Detected XNA game start from ${senderNick}; room rotation scheduled in 30 seconds.`, {
+        roomId: room.id,
+        channel: room.channel,
+        nick: senderNick,
+      });
+      this.scheduleRoomRotation(room);
+      return;
+    }
+
+    if (upper === 'RETURN') {
+      if (player) {
+        player.isInGame = false;
+        player.isReady = false;
+      }
+      this.logHosting('SYSTEM', `Detected ${senderNick} returning from the game.`, {
+        roomId: room.id,
+        channel: room.channel,
+        nick: senderNick,
+      });
+    }
+  }
+
+  private scheduleRoomRotation(room: HostedRoom) {
+    if (this.roomRotationTimers.has(room.id)) return;
+
+    const timer = setTimeout(() => {
+      this.roomRotationTimers.delete(room.id);
+      const activeRoom = this.rooms.get(room.id);
+      if (!activeRoom) return;
+
+      const nextRoomOptions: Partial<HostedRoom> = {
+        gameTitle: activeRoom.gameTitle,
+        maxPlayers: activeRoom.maxPlayers,
+        currentMap: activeRoom.currentMap,
+        mapPool: [...activeRoom.mapPool],
+        gameSpeed: activeRoom.gameSpeed,
+        startingCredits: activeRoom.startingCredits,
+        bases: activeRoom.bases,
+        oreRegenerates: activeRoom.oreRegenerates,
+        crates: activeRoom.crates,
+        fogOfWar: activeRoom.fogOfWar,
+        shroud: activeRoom.shroud,
+        password: activeRoom.password,
+      };
+
+      this.closeRoom(activeRoom.id, 'Game started; room rotated after 30 seconds');
+      this.createRoom(nextRoomOptions);
+    }, this.postLaunchRoomRotationMs);
+
+    this.roomRotationTimers.set(room.id, timer);
+  }
 
   private handleCtcpQuery(senderNick: string, ctcpCommand: string) {
     const upper = ctcpCommand.toUpperCase().trim();
