@@ -806,7 +806,7 @@ export class CnCNetAutoHostBot {
     if (!room.isLocked) throw new Error('Lock the room before launching it.');
     if (room.status === 'PLAYING') throw new Error('This room has already been launched.');
 
-    const players = [this.currentNick, ...room.players.map((player) => player.nick)];
+    const players = room.players.map((player) => player.nick);
     const now = new Date();
     const gameIdBase = `${now.getDate()}${now.getMonth() + 1}${now.getHours()}${now.getMinutes()}`;
     const gameId = Number(`0${gameIdBase}`);
