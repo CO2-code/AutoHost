@@ -861,7 +861,7 @@ Create your first IRC room. It will be advertised in #cncnet-ra-games.
                           <Users className="w-3.5 h-3.5 text-red-400" />
                           Connected Commanders ({selectedRoom.players.length}/{selectedRoom.maxPlayers})
                         </h4>
-                        <span className="text-[11px] ${selectedRoom.isLocked ? 'text-amber-300' : 'text-slate-400'}">
+                        <span className={`text-[11px] ${selectedRoom.isLocked ? 'text-amber-300' : 'text-slate-400'}`}>
                           {selectedRoom.isLocked ? 'Room is locked to new players' : 'Room is open to players'}
                         </span>
                       </div>
