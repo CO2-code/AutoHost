@@ -606,6 +606,9 @@ export class CnCNetAutoHostBot {
     if (command === 'PART' || command === 'QUIT' || command === 'KICK') {
       let targetNick = senderNick;
       let channelTarget = (params[0] || '').toLowerCase();
+      if (command === 'PART' && !channelTarget) {
+        channelTarget = (trailing.split(/\s+/)[0] || '').toLowerCase();
+      }
       if (command === 'KICK' && params.length >= 2) {
         channelTarget = params[0].toLowerCase();
         targetNick = params[1];
