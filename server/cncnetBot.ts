@@ -910,7 +910,7 @@ export class CnCNetAutoHostBot {
       playerOptions.writeUInt32LE(0, 0);
       return `${player.nick};${playerOptions.readInt32LE(0)};${player.isReady ? 1 : 0};`;
     });
-    this.sendRaw(`NOTICE ${room.channel} :\\x01PO ${entries.join('')}\\x01`);
+    this.sendRaw(`NOTICE ${room.channel} :\x01PO ${entries.join('')}\x01`);
   }
 
   private sendRoomGameOptions(room: HostedRoom) {
