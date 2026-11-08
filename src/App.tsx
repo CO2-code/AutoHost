@@ -127,7 +127,7 @@ export default function App() {
   const [chatInput, setChatInput] = useState('');
 
   // Create Room Form state (GameLobbyBase.ini official options)
-  const [newRoomTitle, setNewRoomTitle] = useState('[RA1] CnCNet AutoHost - Fast 1v1/2v2 [All Welcome]');
+  const [newRoomTitle, setNewRoomTitle] = useState('[AUTO] 2v2');
   const [newRoomMaxPlayers, setNewRoomMaxPlayers] = useState(4);
   const [newRoomMap, setNewRoomMap] = useState('[2] Equal Opportunity');
   const [newRoomPassword, setNewRoomPassword] = useState('');
