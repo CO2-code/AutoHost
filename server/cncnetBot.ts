@@ -186,6 +186,7 @@ export class CnCNetAutoHostBot {
   private roomSoloAiTimers: Map<string, NodeJS.Timeout> = new Map();
   private joinAttemptsByHost: Map<string, number[]> = new Map();
   private messageAttemptsByHost: Map<string, number[]> = new Map();
+  private ctcpAttemptsByIdentity: Map<string, number[]> = new Map();
   private temporaryBanTimers: Map<string, NodeJS.Timeout> = new Map();
   private roomNamesSnapshots: Map<string, Map<string, string>> = new Map();
   private roomNamesDepartures: Map<string, Set<string>> = new Map();
@@ -662,6 +663,7 @@ export class CnCNetAutoHostBot {
             if (!departed.has(nickKey)) this.handlePlayerJoin(room, nick, '');
           }
         }
+        this.evaluateRoomAutomation(room);
         this.roomNamesSnapshots.delete(room.id);
         this.roomNamesDepartures.delete(room.id);
       }
@@ -674,7 +676,7 @@ export class CnCNetAutoHostBot {
 
       // Direct CTCP query to bot nick
       if (target.toLowerCase() === this.currentNick.toLowerCase() && text.startsWith('\x01') && text.endsWith('\x01')) {
-        this.handleCtcpQuery(senderNick, text.slice(1, -1));
+        this.handleCtcpQuery(senderNick, text.slice(1, -1), senderHostmask || senderNick);
         return;
       }
 
@@ -698,7 +700,7 @@ export class CnCNetAutoHostBot {
 
       // CTCP query (\x01PING, \x01VERSION, \x01TIME)
       if (text.startsWith('\x01') && text.endsWith('\x01')) {
-        this.handleCtcpQuery(senderNick, text.slice(1, -1));
+        this.handleCtcpQuery(senderNick, text.slice(1, -1), senderHostmask || senderNick);
         return;
       }
 
@@ -1618,7 +1620,8 @@ export class CnCNetAutoHostBot {
   }
 
   // ======================== CTCP ========================
-  private handleCtcpQuery(senderNick: string, ctcpCommand: string) {
+  private handleCtcpQuery(senderNick: string, ctcpCommand: string, identity: string) {
+    if (this.recordRateAttempt(this.ctcpAttemptsByIdentity, identity.toLowerCase(), 10000) > 5) return;
     const upper = ctcpCommand.toUpperCase().trim();
     if (upper === 'VERSION') {
       this.sendRaw(`NOTICE ${senderNick} :\x01VERSION CnCNet Red Alert 1 Client AutoHost Bot v2.4 (cncnet-ra-client-package)\x01`);
