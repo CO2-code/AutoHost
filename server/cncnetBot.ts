@@ -66,7 +66,7 @@ export const RA1_DEFINITION: GameDefinition = {
     '[4] Spacecraft by CB (ND edit)',
     '[4] Z-Canuta (Ore)',
   ],
-  defaultTitle: '[RA1] CnCNet AutoHost - Fast 1v1/2v2 [All Welcome]',
+  defaultTitle: '[AUTO] 2v2',
   defaultMaxPlayers: 4,
 };
 
@@ -247,7 +247,7 @@ export class CnCNetAutoHostBot {
 
     // Initial default RA1 room
     this.createRoom({
-      gameTitle: '[RA1] CnCNet AutoHost - Fast 1v1/2v2 [All Welcome]',
+      gameTitle: '[AUTO] 2v2',
       maxPlayers: 4,
       currentMap: '[4] 4c Niklas FE v1.0 Fair',
       gameSpeed: 5,
