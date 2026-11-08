@@ -1151,7 +1151,7 @@ export class CnCNetAutoHostBot {
           if (timer) {
             clearTimeout(timer);
             this.roomTunnelRenegotiationTimers.delete(room.id);
-            this.logHosting('SYSTEM', \`Skipped XNA tunnel renegotiation because all \${room.players.length} players already negotiated successfully in \${room.channel}.\`, {
+            this.logHosting('SYSTEM', `Skipped XNA tunnel renegotiation because all ${room.players.length} players already negotiated successfully in ${room.channel}.`, {
               roomId: room.id,
               channel: room.channel,
             });
