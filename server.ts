@@ -4,6 +4,11 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { createServer as createViteServer } from 'vite';
 import { CnCNetAutoHostBot, RA1_DEFINITION } from './server/cncnetBot.ts';
+import {
+  RA1_DROPDOWNS,
+  RA1_CHECKBOX_DEFINITIONS,
+  DEFAULT_RA1_OPTIONS,
+} from './server/ra1GameOptions.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -108,12 +113,22 @@ app.post('/api/rooms/create', (req, res) => {
   }
 });
 
+app.get('/api/game-options/meta', (req, res) => {
+  res.json({
+    success: true,
+    dropdowns: RA1_DROPDOWNS,
+    checkboxes: RA1_CHECKBOX_DEFINITIONS,
+    defaultOptions: DEFAULT_RA1_OPTIONS,
+  });
+});
+
 app.post('/api/rooms/update', (req, res) => {
   const { roomId, updates } = req.body || {};
   try {
     if (!roomId) throw new Error('roomId is required');
     cncnetBot.updateRoomSettings(roomId, updates || {});
-    res.json({ success: true, message: 'Room updated.' });
+    const room = cncnetBot.getRoom(roomId);
+    res.json({ success: true, message: 'Room updated.', room });
   } catch (err: any) {
     res.status(400).json({ success: false, error: err.message });
   }

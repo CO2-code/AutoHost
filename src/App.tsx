@@ -33,6 +33,15 @@ import {
   Sparkles,
 } from 'lucide-react';
 
+import {
+  Ra1GameOptions,
+  DEFAULT_RA1_OPTIONS,
+  RA1_DROPDOWNS,
+  RA1_CHECKBOX_DEFINITIONS,
+  RA1_OPTION_PRESETS,
+  Ra1CheckboxDefinition,
+} from './types/ra1Options';
+
 export interface GameDefinition {
   code: 'RA';
   name: string;
@@ -49,6 +58,7 @@ export interface RoomPlayer {
   slot: number;
   isReady: boolean;
   isHost: boolean;
+  isInGame?: boolean;
   joinedAt: string;
   hostmask?: string;
   votedMap?: string;
@@ -65,13 +75,14 @@ export interface HostedRoom {
   maxPlayers: number;
   currentMap: string;
   mapPool: string[];
-  gameSpeed: number;
-  startingCredits: number;
-  bases: boolean;
-  oreRegenerates: boolean;
-  crates: boolean;
-  fogOfWar: boolean;
-  shroud: boolean;
+  options: Ra1GameOptions;
+  gameSpeed?: number | string;
+  startingCredits?: number;
+  bases?: boolean;
+  oreRegenerates?: boolean;
+  crates?: boolean;
+  fogOfWar?: boolean;
+  shroud?: boolean;
   status: 'WAITING' | 'PLAYING';
   isLocked: boolean;
   players: RoomPlayer[];
@@ -115,17 +126,17 @@ export default function App() {
   // Chat message
   const [chatInput, setChatInput] = useState('');
 
-  // Create Room Form state (RA1 dedicated)
+  // Create Room Form state (GameLobbyBase.ini official options)
   const [newRoomTitle, setNewRoomTitle] = useState('[RA1] CnCNet AutoHost - Fast 1v1/2v2 [All Welcome]');
   const [newRoomMaxPlayers, setNewRoomMaxPlayers] = useState(4);
   const [newRoomMap, setNewRoomMap] = useState('[2] Equal Opportunity');
-  const [newRoomSpeed, setNewRoomSpeed] = useState(5);
-  const [newRoomCredits, setNewRoomCredits] = useState(10000);
-  const [newRoomBases, setNewRoomBases] = useState(true);
-  const [newRoomOre, setNewRoomOre] = useState(true);
-  const [newRoomCrates, setNewRoomCrates] = useState(false);
-  const [newRoomFog, setNewRoomFog] = useState(true);
   const [newRoomPassword, setNewRoomPassword] = useState('');
+  const [newRoomOptions, setNewRoomOptions] = useState<Ra1GameOptions>({ ...DEFAULT_RA1_OPTIONS });
+
+  // In-place room options editor state
+  const [isEditingOptions, setIsEditingOptions] = useState(false);
+  const [editOptions, setEditOptions] = useState<Ra1GameOptions>({ ...DEFAULT_RA1_OPTIONS });
+  const [successToast, setSuccessToast] = useState<string | null>(null);
 
   // Bot Config Form state
   const [configNick, setConfigNick] = useState('RA1_AutoHost');
@@ -284,13 +295,7 @@ export default function App() {
         maxPlayers: newRoomMaxPlayers,
         currentMap: newRoomMap,
         mapPool: gameDef ? gameDef.defaultMaps : [newRoomMap],
-        gameSpeed: newRoomSpeed,
-        startingCredits: newRoomCredits,
-        bases: newRoomBases,
-        oreRegenerates: newRoomOre,
-        crates: newRoomCrates,
-        fogOfWar: newRoomFog,
-        shroud: true,
+        options: newRoomOptions,
         password: newRoomPassword || undefined,
       };
 
@@ -305,9 +310,38 @@ export default function App() {
         await fetchStatus();
         if (json.room) setSelectedRoomId(json.room.id);
         setActiveTab('rooms');
+        setSuccessToast('New RA1 room created with official GameLobbyBase.ini settings!');
+        setTimeout(() => setSuccessToast(null), 4000);
       } else {
         const err = await res.json();
         alert(err.error || 'Failed to create room');
+      }
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleUpdateRoomOptions = async (roomId: string, optionsToSave: Ra1GameOptions) => {
+    setIsLoading(true);
+    try {
+      const res = await fetch('/api/rooms/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          roomId,
+          updates: { options: optionsToSave },
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        await fetchStatus();
+        setIsEditingOptions(false);
+        setSuccessToast('Room game options updated & broadcasted to #cncnet-ra-games!');
+        setTimeout(() => setSuccessToast(null), 4000);
+      } else {
+        alert(data.error || 'Failed to update game options');
       }
     } catch (err: any) {
       alert(err.message);
@@ -612,6 +646,22 @@ Announces IRC room listings in #cncnet-ra-games. The game-list channel is public
           </div>
         </div>
 
+        {/* Success Toast */}
+        {successToast && (
+          <div className="bg-emerald-950/80 border border-emerald-600/50 text-emerald-200 px-4 py-3 rounded-xl flex items-center justify-between text-xs shadow-lg animate-in fade-in">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+              <span className="font-medium">{successToast}</span>
+            </div>
+            <button
+              onClick={() => setSuccessToast(null)}
+              className="text-emerald-400 hover:text-white text-xs font-bold px-2 py-0.5 rounded cursor-pointer"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
         {/* Tab Navigation */}
         <div className="flex border-b border-slate-800 gap-1 overflow-x-auto">
           <button
@@ -799,6 +849,23 @@ Create your first IRC room. It will be advertised in #cncnet-ra-games.
                         )}
 
                         <button
+                          onClick={() => {
+                            if (!isEditingOptions && selectedRoom.options) {
+                              setEditOptions({ ...selectedRoom.options });
+                            }
+                            setIsEditingOptions(!isEditingOptions);
+                          }}
+                          className={`px-2.5 py-1.5 rounded-lg border text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-colors ${
+                            isEditingOptions
+                              ? 'bg-red-950 text-red-300 border-red-700'
+                              : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
+                          }`}
+                          title="View and edit official GameLobbyBase.ini options for this room"
+                        >
+                          <Sliders className="w-3.5 h-3.5 text-red-400" />
+                          {isEditingOptions ? 'Close Editor' : 'Game Options'}
+                        </button>
+                        <button
                           onClick={() => handleSetRoomLocked(selectedRoom.id, !selectedRoom.isLocked)}
                           disabled={isLoading || selectedRoom.status === 'PLAYING' || (selectedRoom.isLocked && selectedRoom.players.length >= selectedRoom.maxPlayers)}
                           className={`px-2.5 py-1.5 rounded-lg border text-xs font-semibold flex items-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${selectedRoom.isLocked ? 'bg-amber-950/60 hover:bg-amber-950 text-amber-300 border-amber-800' : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'}`}
@@ -826,33 +893,354 @@ Create your first IRC room. It will be advertised in #cncnet-ra-games.
                       </div>
                     </div>
 
-                    {/* Attributes Grid */}
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-950/60 p-3.5 rounded-xl border border-slate-800">
-                      <div>
-                        <span className="text-[10px] text-slate-500 uppercase font-semibold block">Current Map</span>
-                        <span className="text-xs font-bold text-slate-200 truncate block mt-0.5">
-                          {selectedRoom.currentMap}
-                        </span>
+                    {/* Live Options Summary from GameLobbyBase.ini */}
+                    <div className="bg-slate-950/80 p-3.5 rounded-xl border border-slate-800 flex flex-col gap-3">
+                      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                        <div className="bg-slate-900/80 p-2.5 rounded-lg border border-slate-800/80">
+                          <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider block">Game Mode</span>
+                          <span className="text-xs font-bold text-white block mt-0.5">
+                            {selectedRoom.options ? selectedRoom.options.gameType : 'Standard'}
+                          </span>
+                        </div>
+                        <div className="bg-slate-900/80 p-2.5 rounded-lg border border-slate-800/80">
+                          <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider block">Tech Level</span>
+                          <span className="text-xs font-bold text-emerald-400 block mt-0.5">
+                            Level {selectedRoom.options ? selectedRoom.options.techLevel : 10}
+                          </span>
+                        </div>
+                        <div className="bg-slate-900/80 p-2.5 rounded-lg border border-slate-800/80">
+                          <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider block">Credits</span>
+                          <span className="text-xs font-bold text-amber-300 block mt-0.5">
+                            ${(selectedRoom.options?.credits ?? selectedRoom.startingCredits ?? 10000).toLocaleString()}
+                          </span>
+                        </div>
+                        <div className="bg-slate-900/80 p-2.5 rounded-lg border border-slate-800/80">
+                          <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider block">Units Count</span>
+                          <span className="text-xs font-bold text-cyan-400 block mt-0.5">
+                            {selectedRoom.options ? selectedRoom.options.unitCount : 0} Units
+                          </span>
+                        </div>
+                        <div className="bg-slate-900/80 p-2.5 rounded-lg border border-slate-800/80">
+                          <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider block">Speed Cap</span>
+                          <span className="text-xs font-bold text-white block mt-0.5">
+                            {selectedRoom.options ? selectedRoom.options.gameSpeed : '60 FPS'}
+                          </span>
+                        </div>
                       </div>
-                      <div>
-                        <span className="text-[10px] text-slate-500 uppercase font-semibold block">Game Speed</span>
-                        <span className="text-xs font-bold text-slate-200 block mt-0.5">
-                          Speed {selectedRoom.gameSpeed} (Fast)
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-[10px] text-slate-500 uppercase font-semibold block">Starting Credits</span>
-                        <span className="text-xs font-bold text-slate-200 block mt-0.5">
-                          ${selectedRoom.startingCredits.toLocaleString()}
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-[10px] text-slate-500 uppercase font-semibold block">Ore / Crates</span>
-                        <span className="text-xs font-bold text-slate-200 block mt-0.5">
-                          Ore: {selectedRoom.oreRegenerates ? 'Yes' : 'No'} • Crates: {selectedRoom.crates ? 'Yes' : 'No'}
-                        </span>
+
+                      {/* Active Rules Badges */}
+                      <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                        <span className="text-[10px] uppercase font-bold text-slate-500 mr-1">Active Rules:</span>
+                        {(selectedRoom.options?.bases ?? selectedRoom.bases) ? (
+                          <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-950/70 text-emerald-300 border border-emerald-800/60">
+                            Bases ON
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-red-950/50 text-red-400 border border-red-900/50">
+                            No Bases
+                          </span>
+                        )}
+
+                        {(selectedRoom.options?.oreRegenerates ?? selectedRoom.oreRegenerates) ? (
+                          <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-950/70 text-emerald-300 border border-emerald-800/60">
+                            Ore Regen ON
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-900 text-slate-400 border border-slate-800">
+                            Ore Regen OFF
+                          </span>
+                        )}
+
+                        {(selectedRoom.options?.crates ?? selectedRoom.crates) ? (
+                          <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-950/70 text-amber-300 border border-amber-800/60">
+                            Crates ON
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-900 text-slate-400 border border-slate-800">
+                            Crates OFF
+                          </span>
+                        )}
+
+                        {selectedRoom.options?.shortGame && (
+                          <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-purple-950/70 text-purple-300 border border-purple-800/60">
+                            Short Game
+                          </span>
+                        )}
+
+                        {selectedRoom.options?.mcvUndeploy && (
+                          <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-blue-950/70 text-blue-300 border border-blue-800/60">
+                            MCV Undeploy
+                          </span>
+                        )}
+
+                        {selectedRoom.options?.allyReveal && (
+                          <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-cyan-950/70 text-cyan-300 border border-cyan-800/60">
+                            Ally Shroud Reveal
+                          </span>
+                        )}
+
+                        {selectedRoom.options?.buildOffAlly && (
+                          <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-800 text-slate-300 border border-slate-700">
+                            Build Off Ally
+                          </span>
+                        )}
+
+                        {selectedRoom.options?.parabombsInMultiplayer && (
+                          <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-red-950/70 text-red-300 border border-red-800/60">
+                            Parabombs
+                          </span>
+                        )}
+
+                        {selectedRoom.options?.aftermath && (
+                          <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-orange-950/70 text-orange-300 border border-orange-800/60">
+                            Aftermath Game
+                          </span>
+                        )}
+
+                        {selectedRoom.options?.slowUnitBuild && (
+                          <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-800 text-slate-400 border border-slate-700">
+                            Slow Build
+                          </span>
+                        )}
+
+                        {selectedRoom.options?.noTeslaZapEffectDelay && (
+                          <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-900 text-slate-400 border border-slate-800">
+                            Bug Fixes ON
+                          </span>
+                        )}
                       </div>
                     </div>
+
+                    {/* Interactive In-Place Room Options Editor */}
+                    {isEditingOptions && (
+                      <div className="bg-slate-950 border border-red-900/60 rounded-xl p-4 shadow-xl flex flex-col gap-4 animate-in fade-in">
+                        <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+                          <div className="flex items-center gap-2">
+                            <Sliders className="w-4 h-4 text-red-500" />
+                            <h4 className="text-xs font-bold text-white uppercase tracking-wider">
+                              Configure GameLobbyBase.ini Match Settings
+                            </h4>
+                          </div>
+                          <span className="text-[11px] text-slate-400">
+                            Changes broadcast to IRC <code className="font-mono text-red-400">#cncnet-ra-games</code> and synced to players
+                          </span>
+                        </div>
+
+                        {/* Presets bar */}
+                        <div>
+                          <span className="text-[10px] font-bold uppercase text-slate-400 block mb-1.5">
+                            Quick Archetype Presets:
+                          </span>
+                          <div className="flex flex-wrap gap-1.5">
+                            {RA1_OPTION_PRESETS.map((preset) => (
+                              <button
+                                key={preset.name}
+                                type="button"
+                                onClick={() => setEditOptions({ ...preset.options })}
+                                className="px-2.5 py-1 rounded bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700 text-[11px] font-medium cursor-pointer transition-colors"
+                              >
+                                {preset.name}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Dropdowns */}
+                        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                          <div>
+                            <label className="block text-[10px] font-bold uppercase text-slate-400 mb-1">
+                              {RA1_DROPDOWNS.gameType.label}
+                            </label>
+                            <select
+                              value={editOptions.gameType}
+                              onChange={(e) => setEditOptions({ ...editOptions, gameType: e.target.value as 'Standard' | 'Aftermath' })}
+                              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-red-500"
+                            >
+                              {RA1_DROPDOWNS.gameType.options.map((opt) => (
+                                <option key={opt} value={opt}>
+                                  {opt}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+
+                          <div>
+                            <label className="block text-[10px] font-bold uppercase text-slate-400 mb-1">
+                              {RA1_DROPDOWNS.techLevel.label}
+                            </label>
+                            <select
+                              value={editOptions.techLevel}
+                              onChange={(e) => setEditOptions({ ...editOptions, techLevel: Number(e.target.value) })}
+                              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-red-500"
+                            >
+                              {RA1_DROPDOWNS.techLevel.options.map((opt) => (
+                                <option key={opt} value={opt}>
+                                  Level {opt}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+
+                          <div>
+                            <label className="block text-[10px] font-bold uppercase text-slate-400 mb-1">
+                              {RA1_DROPDOWNS.credits.label}
+                            </label>
+                            <select
+                              value={editOptions.credits}
+                              onChange={(e) => setEditOptions({ ...editOptions, credits: Number(e.target.value) })}
+                              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-red-500"
+                            >
+                              {RA1_DROPDOWNS.credits.options.map((opt) => (
+                                <option key={opt} value={opt}>
+                                  ${opt.toLocaleString()}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+
+                          <div>
+                            <label className="block text-[10px] font-bold uppercase text-slate-400 mb-1">
+                              {RA1_DROPDOWNS.unitCount.label}
+                            </label>
+                            <select
+                              value={editOptions.unitCount}
+                              onChange={(e) => setEditOptions({ ...editOptions, unitCount: Number(e.target.value) })}
+                              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-red-500"
+                            >
+                              {RA1_DROPDOWNS.unitCount.options.map((opt) => (
+                                <option key={opt} value={opt}>
+                                  {opt} Units
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+
+                          <div>
+                            <label className="block text-[10px] font-bold uppercase text-slate-400 mb-1">
+                              {RA1_DROPDOWNS.gameSpeed.label}
+                            </label>
+                            <select
+                              value={editOptions.gameSpeed}
+                              onChange={(e) => setEditOptions({ ...editOptions, gameSpeed: e.target.value })}
+                              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-red-500"
+                            >
+                              {RA1_DROPDOWNS.gameSpeed.options.map((opt) => (
+                                <option key={opt} value={opt}>
+                                  {opt}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+
+                        {/* 16 Checkboxes in 4 Categories */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+                          {/* Category: Gameplay Rules */}
+                          <div className="bg-slate-900/90 border border-slate-800 rounded-lg p-2.5 flex flex-col gap-2">
+                            <span className="text-[10px] font-bold text-red-400 uppercase tracking-wider pb-1 border-b border-slate-800">
+                              Rules & Victory
+                            </span>
+                            {RA1_CHECKBOX_DEFINITIONS.filter((d) => d.category === 'rules').map((cb) => (
+                              <label key={cb.key} className="flex items-start gap-2 cursor-pointer text-slate-300 hover:text-white select-none">
+                                <input
+                                  type="checkbox"
+                                  checked={!!editOptions[cb.key]}
+                                  onChange={(e) => setEditOptions({ ...editOptions, [cb.key]: e.target.checked })}
+                                  className="mt-0.5 rounded bg-slate-800 border-slate-700 text-red-600 focus:ring-0"
+                                />
+                                <div className="text-[11px] leading-tight">
+                                  <span className="font-semibold block">{cb.label}</span>
+                                  <span className="text-[10px] text-slate-500">{cb.tooltip}</span>
+                                </div>
+                              </label>
+                            ))}
+                          </div>
+
+                          {/* Category: Vision & Shroud */}
+                          <div className="bg-slate-900/90 border border-slate-800 rounded-lg p-2.5 flex flex-col gap-2">
+                            <span className="text-[10px] font-bold text-cyan-400 uppercase tracking-wider pb-1 border-b border-slate-800">
+                              Vision & Shroud
+                            </span>
+                            {RA1_CHECKBOX_DEFINITIONS.filter((d) => d.category === 'shroud').map((cb) => (
+                              <label key={cb.key} className="flex items-start gap-2 cursor-pointer text-slate-300 hover:text-white select-none">
+                                <input
+                                  type="checkbox"
+                                  checked={!!editOptions[cb.key]}
+                                  onChange={(e) => setEditOptions({ ...editOptions, [cb.key]: e.target.checked })}
+                                  className="mt-0.5 rounded bg-slate-800 border-slate-700 text-red-600 focus:ring-0"
+                                />
+                                <div className="text-[11px] leading-tight">
+                                  <span className="font-semibold block">{cb.label}</span>
+                                  <span className="text-[10px] text-slate-500">{cb.tooltip}</span>
+                                </div>
+                              </label>
+                            ))}
+                          </div>
+
+                          {/* Category: Allies & Tactics */}
+                          <div className="bg-slate-900/90 border border-slate-800 rounded-lg p-2.5 flex flex-col gap-2">
+                            <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider pb-1 border-b border-slate-800">
+                              Base & Allies
+                            </span>
+                            {RA1_CHECKBOX_DEFINITIONS.filter((d) => d.category === 'tactics').map((cb) => (
+                              <label key={cb.key} className="flex items-start gap-2 cursor-pointer text-slate-300 hover:text-white select-none">
+                                <input
+                                  type="checkbox"
+                                  checked={!!editOptions[cb.key]}
+                                  onChange={(e) => setEditOptions({ ...editOptions, [cb.key]: e.target.checked })}
+                                  className="mt-0.5 rounded bg-slate-800 border-slate-700 text-red-600 focus:ring-0"
+                                />
+                                <div className="text-[11px] leading-tight">
+                                  <span className="font-semibold block">{cb.label}</span>
+                                  <span className="text-[10px] text-slate-500">{cb.tooltip}</span>
+                                </div>
+                              </label>
+                            ))}
+                          </div>
+
+                          {/* Category: Engine & Expansion */}
+                          <div className="bg-slate-900/90 border border-slate-800 rounded-lg p-2.5 flex flex-col gap-2">
+                            <span className="text-[10px] font-bold text-purple-400 uppercase tracking-wider pb-1 border-b border-slate-800">
+                              Expansions & Engine
+                            </span>
+                            {RA1_CHECKBOX_DEFINITIONS.filter((d) => d.category === 'expansion').map((cb) => (
+                              <label key={cb.key} className="flex items-start gap-2 cursor-pointer text-slate-300 hover:text-white select-none">
+                                <input
+                                  type="checkbox"
+                                  checked={!!editOptions[cb.key]}
+                                  onChange={(e) => setEditOptions({ ...editOptions, [cb.key]: e.target.checked })}
+                                  className="mt-0.5 rounded bg-slate-800 border-slate-700 text-red-600 focus:ring-0"
+                                />
+                                <div className="text-[11px] leading-tight">
+                                  <span className="font-semibold block">{cb.label}</span>
+                                  <span className="text-[10px] text-slate-500">{cb.tooltip}</span>
+                                </div>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Save / Cancel buttons */}
+                        <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+                          <button
+                            type="button"
+                            onClick={() => setIsEditingOptions(false)}
+                            className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-400 text-xs font-semibold cursor-pointer"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            disabled={isLoading}
+                            onClick={() => handleUpdateRoomOptions(selectedRoom.id, editOptions)}
+                            className="px-4 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow"
+                          >
+                            <Zap className="w-3.5 h-3.5" />
+                            Save & Sync to Live Room
+                          </button>
+                        </div>
+                      </div>
+                    )}
 
                     {/* Players in Room */}
                     <div>
@@ -1138,6 +1526,30 @@ Create your first IRC room. It will be advertised in #cncnet-ra-games.
                 </div>
               </div>
 
+              {/* Presets Bar */}
+              <div className="bg-slate-950/70 p-3 rounded-lg border border-slate-800">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                    Quick Game Presets (GameLobbyBase.ini)
+                  </span>
+                  <span className="text-[10px] text-slate-500 font-mono">Select to apply standard rules</span>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {RA1_OPTION_PRESETS.map((preset) => (
+                    <button
+                      key={preset.name}
+                      type="button"
+                      onClick={() => setNewRoomOptions({ ...preset.options })}
+                      className="px-2.5 py-1 rounded bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700 text-[11px] font-medium cursor-pointer transition-colors"
+                    >
+                      {preset.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Primary Match Settings */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <div>
                   <label className="block font-bold text-slate-300 mb-1">Max Players</label>
@@ -1154,84 +1566,185 @@ Create your first IRC room. It will be advertised in #cncnet-ra-games.
                 </div>
 
                 <div>
-                  <label className="block font-bold text-slate-300 mb-1">Game Speed</label>
+                  <label className="block font-bold text-slate-300 mb-1">{RA1_DROPDOWNS.gameType.label}</label>
                   <select
-                    value={newRoomSpeed}
-                    onChange={(e) => setNewRoomSpeed(Number(e.target.value))}
+                    value={newRoomOptions.gameType}
+                    onChange={(e) => setNewRoomOptions({ ...newRoomOptions, gameType: e.target.value as 'Standard' | 'Aftermath' })}
                     className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-red-500 font-mono"
                   >
-                    <option value={6}>Speed 6 (Fastest)</option>
-                    <option value={5}>Speed 5 (Standard RA1)</option>
-                    <option value={4}>Speed 4 (Medium)</option>
+                    {RA1_DROPDOWNS.gameType.options.map((opt) => (
+                      <option key={opt} value={opt}>
+                        {opt}
+                      </option>
+                    ))}
                   </select>
                 </div>
 
                 <div>
-                  <label className="block font-bold text-slate-300 mb-1">Starting Credits</label>
+                  <label className="block font-bold text-slate-300 mb-1">{RA1_DROPDOWNS.techLevel.label}</label>
                   <select
-                    value={newRoomCredits}
-                    onChange={(e) => setNewRoomCredits(Number(e.target.value))}
+                    value={newRoomOptions.techLevel}
+                    onChange={(e) => setNewRoomOptions({ ...newRoomOptions, techLevel: Number(e.target.value) })}
                     className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-red-500 font-mono"
                   >
-                    <option value={5000}>$5,000</option>
-                    <option value={10000}>$10,000 (Standard)</option>
-                    <option value={15000}>$15,000</option>
-                    <option value={20000}>$20,000</option>
+                    {RA1_DROPDOWNS.techLevel.options.map((opt) => (
+                      <option key={opt} value={opt}>
+                        Level {opt}
+                      </option>
+                    ))}
                   </select>
                 </div>
 
                 <div>
-                  <label className="block font-bold text-slate-300 mb-1">Private Room Password</label>
+                  <label className="block font-bold text-slate-300 mb-1">Private Password</label>
                   <input
                     type="text"
                     value={newRoomPassword}
                     onChange={(e) => setNewRoomPassword(e.target.value)}
-                    placeholder="Leave empty for public room"
+                    placeholder="Leave empty for public"
                     className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-red-500 font-mono"
                   />
                 </div>
               </div>
 
-              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800 flex flex-wrap gap-4 select-none">
-                <label className="flex items-center gap-2 cursor-pointer text-slate-300">
-                  <input
-                    type="checkbox"
-                    checked={newRoomBases}
-                    onChange={(e) => setNewRoomBases(e.target.checked)}
-                    className="rounded bg-slate-800 border-slate-700 text-red-500"
-                  />
-                  Bases Enabled
-                </label>
+              {/* Economic & Speed Tuning Dropdowns */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-300 mb-1">{RA1_DROPDOWNS.credits.label}</label>
+                  <select
+                    value={newRoomOptions.credits}
+                    onChange={(e) => setNewRoomOptions({ ...newRoomOptions, credits: Number(e.target.value) })}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-red-500 font-mono"
+                  >
+                    {RA1_DROPDOWNS.credits.options.map((opt) => (
+                      <option key={opt} value={opt}>
+                        ${opt.toLocaleString()}
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
-                <label className="flex items-center gap-2 cursor-pointer text-slate-300">
-                  <input
-                    type="checkbox"
-                    checked={newRoomOre}
-                    onChange={(e) => setNewRoomOre(e.target.checked)}
-                    className="rounded bg-slate-800 border-slate-700 text-red-500"
-                  />
-                  Ore Regenerates
-                </label>
+                <div>
+                  <label className="block font-bold text-slate-300 mb-1">{RA1_DROPDOWNS.unitCount.label}</label>
+                  <select
+                    value={newRoomOptions.unitCount}
+                    onChange={(e) => setNewRoomOptions({ ...newRoomOptions, unitCount: Number(e.target.value) })}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-red-500 font-mono"
+                  >
+                    {RA1_DROPDOWNS.unitCount.options.map((opt) => (
+                      <option key={opt} value={opt}>
+                        {opt} Units
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
-                <label className="flex items-center gap-2 cursor-pointer text-slate-300">
-                  <input
-                    type="checkbox"
-                    checked={newRoomFog}
-                    onChange={(e) => setNewRoomFog(e.target.checked)}
-                    className="rounded bg-slate-800 border-slate-700 text-red-500"
-                  />
-                  Fog of War
-                </label>
+                <div>
+                  <label className="block font-bold text-slate-300 mb-1">{RA1_DROPDOWNS.gameSpeed.label}</label>
+                  <select
+                    value={newRoomOptions.gameSpeed}
+                    onChange={(e) => setNewRoomOptions({ ...newRoomOptions, gameSpeed: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-red-500 font-mono"
+                  >
+                    {RA1_DROPDOWNS.gameSpeed.options.map((opt) => (
+                      <option key={opt} value={opt}>
+                        {opt}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
 
-                <label className="flex items-center gap-2 cursor-pointer text-slate-300">
-                  <input
-                    type="checkbox"
-                    checked={newRoomCrates}
-                    onChange={(e) => setNewRoomCrates(e.target.checked)}
-                    className="rounded bg-slate-800 border-slate-700 text-red-500"
-                  />
-                  Random Crates
-                </label>
+              {/* 16 Checkboxes from GameLobbyBase.ini */}
+              <div className="space-y-2">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                  Red Alert 1 Game Rules & Modifiers (16 Authentic Bitmask Flags)
+                </span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+                  {/* Category: Gameplay Rules */}
+                  <div className="bg-slate-950/80 border border-slate-800 rounded-lg p-3 flex flex-col gap-2">
+                    <span className="text-[10px] font-bold text-red-400 uppercase tracking-wider pb-1 border-b border-slate-800">
+                      Rules & Victory
+                    </span>
+                    {RA1_CHECKBOX_DEFINITIONS.filter((d) => d.category === 'rules').map((cb) => (
+                      <label key={cb.key} className="flex items-start gap-2 cursor-pointer text-slate-300 hover:text-white select-none">
+                        <input
+                          type="checkbox"
+                          checked={!!newRoomOptions[cb.key]}
+                          onChange={(e) => setNewRoomOptions({ ...newRoomOptions, [cb.key]: e.target.checked })}
+                          className="mt-0.5 rounded bg-slate-800 border-slate-700 text-red-600 focus:ring-0"
+                        />
+                        <div className="text-[11px] leading-tight">
+                          <span className="font-semibold block">{cb.label}</span>
+                          <span className="text-[10px] text-slate-500">{cb.tooltip}</span>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+
+                  {/* Category: Vision & Shroud */}
+                  <div className="bg-slate-950/80 border border-slate-800 rounded-lg p-3 flex flex-col gap-2">
+                    <span className="text-[10px] font-bold text-cyan-400 uppercase tracking-wider pb-1 border-b border-slate-800">
+                      Vision & Shroud
+                    </span>
+                    {RA1_CHECKBOX_DEFINITIONS.filter((d) => d.category === 'shroud').map((cb) => (
+                      <label key={cb.key} className="flex items-start gap-2 cursor-pointer text-slate-300 hover:text-white select-none">
+                        <input
+                          type="checkbox"
+                          checked={!!newRoomOptions[cb.key]}
+                          onChange={(e) => setNewRoomOptions({ ...newRoomOptions, [cb.key]: e.target.checked })}
+                          className="mt-0.5 rounded bg-slate-800 border-slate-700 text-red-600 focus:ring-0"
+                        />
+                        <div className="text-[11px] leading-tight">
+                          <span className="font-semibold block">{cb.label}</span>
+                          <span className="text-[10px] text-slate-500">{cb.tooltip}</span>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+
+                  {/* Category: Allies & Tactics */}
+                  <div className="bg-slate-950/80 border border-slate-800 rounded-lg p-3 flex flex-col gap-2">
+                    <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider pb-1 border-b border-slate-800">
+                      Base & Allies
+                    </span>
+                    {RA1_CHECKBOX_DEFINITIONS.filter((d) => d.category === 'tactics').map((cb) => (
+                      <label key={cb.key} className="flex items-start gap-2 cursor-pointer text-slate-300 hover:text-white select-none">
+                        <input
+                          type="checkbox"
+                          checked={!!newRoomOptions[cb.key]}
+                          onChange={(e) => setNewRoomOptions({ ...newRoomOptions, [cb.key]: e.target.checked })}
+                          className="mt-0.5 rounded bg-slate-800 border-slate-700 text-red-600 focus:ring-0"
+                        />
+                        <div className="text-[11px] leading-tight">
+                          <span className="font-semibold block">{cb.label}</span>
+                          <span className="text-[10px] text-slate-500">{cb.tooltip}</span>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+
+                  {/* Category: Engine & Expansion */}
+                  <div className="bg-slate-950/80 border border-slate-800 rounded-lg p-3 flex flex-col gap-2">
+                    <span className="text-[10px] font-bold text-purple-400 uppercase tracking-wider pb-1 border-b border-slate-800">
+                      Expansions & Engine
+                    </span>
+                    {RA1_CHECKBOX_DEFINITIONS.filter((d) => d.category === 'expansion').map((cb) => (
+                      <label key={cb.key} className="flex items-start gap-2 cursor-pointer text-slate-300 hover:text-white select-none">
+                        <input
+                          type="checkbox"
+                          checked={!!newRoomOptions[cb.key]}
+                          onChange={(e) => setNewRoomOptions({ ...newRoomOptions, [cb.key]: e.target.checked })}
+                          className="mt-0.5 rounded bg-slate-800 border-slate-700 text-red-600 focus:ring-0"
+                        />
+                        <div className="text-[11px] leading-tight">
+                          <span className="font-semibold block">{cb.label}</span>
+                          <span className="text-[10px] text-slate-500">{cb.tooltip}</span>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                </div>
               </div>
 
               <div className="pt-3 flex items-center justify-end gap-3 border-t border-slate-800">

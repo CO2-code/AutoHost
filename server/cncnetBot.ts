@@ -34,6 +34,14 @@ export interface GameDefinition {
   defaultMaxPlayers: number;
 }
 
+export const KNOWN_MAP_SHA1S: Record<string, string> = {
+  '[2] Equal Opportunity': 'cd454a0a7849d65bbc4a78e49ad7fbae5323623d',
+  '[2] Snow Garden': 'a26569ec187a54b38d6a89beba85d1d6a6a57321',
+  '[4] Cold Pass': '09ff01859ec217cbe79ae52586940a02c8c4a169',
+  '[4] Island Plateau': 'b913d4c38d5f3089d38adcb519e917d0577a755b',
+  '[4] Gold Rush': 'ecda3fcfb61df4b5b7b99c7d41f02c6fb5b03577',
+};
+
 export const RA1_DEFINITION: GameDefinition = {
   code: 'RA',
   name: 'Command & Conquer: Red Alert 1',
@@ -41,11 +49,25 @@ export const RA1_DEFINITION: GameDefinition = {
   lobbyChannel: '#cncnet-ra',
   announcementChannel: '#cncnet-ra-games',
   lobbyChannelKey: 'ra1-derp',
-  defaultMaps: ['[2] Equal Opportunity'],
-
+  defaultMaps: [
+    '[2] Equal Opportunity',
+    '[4] Cold Pass',
+    '[4] Island Plateau',
+    '[4] Gold Rush',
+    '[2] Snow Garden',
+  ],
   defaultTitle: '[RA1] CnCNet AutoHost - Fast 1v1/2v2 [All Welcome]',
   defaultMaxPlayers: 4,
 };
+
+import {
+  Ra1GameOptions,
+  DEFAULT_RA1_OPTIONS,
+  packRa1GameOptions,
+  unpackRa1GameOptions,
+  RA1_CHECKBOX_DEFINITIONS,
+  RA1_DROPDOWNS,
+} from './ra1GameOptions.js';
 
 export interface RoomPlayer {
   nick: string;
@@ -69,13 +91,15 @@ export interface HostedRoom {
   maxPlayers: number;
   currentMap: string;
   mapPool: string[];
-  gameSpeed: number; // 1 to 6 (default 5 for RA1)
-  startingCredits: number; // $10,000 standard
-  bases: boolean;
-  oreRegenerates: boolean;
-  crates: boolean;
-  fogOfWar: boolean;
-  shroud: boolean;
+  options: Ra1GameOptions;
+  // Legacy convenience fields kept in sync with options:
+  gameSpeed?: number | string;
+  startingCredits?: number;
+  bases?: boolean;
+  oreRegenerates?: boolean;
+  crates?: boolean;
+  fogOfWar?: boolean;
+  shroud?: boolean;
   status: 'WAITING' | 'PLAYING';
   isLocked: boolean;
   players: RoomPlayer[];
@@ -581,7 +605,11 @@ export class CnCNetAutoHostBot {
       if (room && trailing) {
         for (const entry of trailing.split(/\s+/)) {
           const nick = entry.replace(/^[@+%&~]+/, '');
-          if (nick && nick.toLowerCase() !== this.currentNick.toLowerCase()) {
+          if (
+            nick &&
+            nick.toLowerCase() !== this.currentNick.toLowerCase() &&
+            !nick.toLowerCase().startsWith('ra1_autohost')
+          ) {
             this.handlePlayerJoin(room, nick, '');
           }
         }
@@ -683,6 +711,20 @@ export class CnCNetAutoHostBot {
       // ignore
     }
 
+    const roomOptions: Ra1GameOptions = {
+      ...DEFAULT_RA1_OPTIONS,
+      ...(options.options || {}),
+      noTeslaZapEffectDelay: true,
+    };
+
+    // If caller provided legacy flat fields, map them into roomOptions
+    if (options.bases !== undefined) roomOptions.bases = Boolean(options.bases);
+    if (options.oreRegenerates !== undefined) roomOptions.oreRegenerates = Boolean(options.oreRegenerates);
+    if (options.crates !== undefined) roomOptions.crates = Boolean(options.crates);
+    if (typeof options.startingCredits === 'number' && RA1_DROPDOWNS.credits.options.includes(options.startingCredits as any)) {
+      roomOptions.credits = options.startingCredits;
+    }
+
     const newRoom: HostedRoom = {
       id: Math.random().toString(36).substring(2, 9),
       gameType: 'RA',
@@ -694,13 +736,12 @@ export class CnCNetAutoHostBot {
       maxPlayers: options.maxPlayers || RA1_DEFINITION.defaultMaxPlayers,
       currentMap: options.currentMap || RA1_DEFINITION.defaultMaps[0],
       mapPool: options.mapPool && options.mapPool.length > 0 ? options.mapPool : [...RA1_DEFINITION.defaultMaps],
-      gameSpeed: options.gameSpeed || 5,
-      startingCredits: options.startingCredits || 10000,
-      bases: options.bases !== undefined ? options.bases : true,
-      oreRegenerates: options.oreRegenerates !== undefined ? options.oreRegenerates : true,
-      crates: options.crates !== undefined ? options.crates : false,
-      fogOfWar: options.fogOfWar !== undefined ? options.fogOfWar : true,
-      shroud: options.shroud !== undefined ? options.shroud : true,
+      options: roomOptions,
+      gameSpeed: roomOptions.gameSpeed,
+      startingCredits: roomOptions.credits,
+      bases: roomOptions.bases,
+      oreRegenerates: roomOptions.oreRegenerates,
+      crates: roomOptions.crates,
       status: 'WAITING',
       isLocked: false,
       players: [],
@@ -715,7 +756,7 @@ export class CnCNetAutoHostBot {
     this.logHosting('ROOM_CREATED', `Created RA1 IRC room '${newRoom.gameTitle}' on ${newRoom.channel}`, {
       roomId: newRoom.id,
       channel: newRoom.channel,
-      details: `Map: ${newRoom.currentMap}, Max: ${newRoom.maxPlayers}`,
+      details: `Map: ${newRoom.currentMap}, Max: ${newRoom.maxPlayers}, Credits: $${newRoom.options.credits}`,
     });
 
     if (this.state === 'REGISTERED') {
@@ -753,7 +794,7 @@ export class CnCNetAutoHostBot {
     this.logHosting('ROOM_CLOSED', `RA1 room ${room.channel} closed.`, { roomId: room.id, details: reason });
   }
 
-  public updateRoomSettings(roomId: string, updates: Partial<HostedRoom>) {
+  public updateRoomSettings(roomId: string, updates: Partial<HostedRoom> & { options?: Partial<Ra1GameOptions> }) {
     const room = this.rooms.get(roomId);
     if (!room) throw new Error('Room not found');
 
@@ -763,17 +804,31 @@ export class CnCNetAutoHostBot {
       this.sendRoomMessage(room, `[MAP] Map changed to: ${room.currentMap}`);
     }
     if (updates.maxPlayers) room.maxPlayers = updates.maxPlayers;
-    if (updates.gameSpeed) room.gameSpeed = updates.gameSpeed;
-    if (updates.startingCredits) room.startingCredits = updates.startingCredits;
-    if (updates.bases !== undefined) room.bases = updates.bases;
-    if (updates.oreRegenerates !== undefined) room.oreRegenerates = updates.oreRegenerates;
-    if (updates.crates !== undefined) room.crates = updates.crates;
-    if (updates.fogOfWar !== undefined) room.fogOfWar = updates.fogOfWar;
-    if (updates.shroud !== undefined) room.shroud = updates.shroud;
     if (updates.password !== undefined) room.password = updates.password || undefined;
 
+    if (updates.options) {
+      room.options = { ...room.options, ...updates.options, noTeslaZapEffectDelay: true };
+      room.bases = room.options.bases;
+      room.oreRegenerates = room.options.oreRegenerates;
+      room.crates = room.options.crates;
+      room.startingCredits = room.options.credits;
+      room.gameSpeed = room.options.gameSpeed;
+    }
+    if (updates.bases !== undefined) room.options.bases = room.bases = updates.bases;
+    if (updates.oreRegenerates !== undefined) room.options.oreRegenerates = room.oreRegenerates = updates.oreRegenerates;
+    if (updates.crates !== undefined) room.options.crates = room.crates = updates.crates;
+    if (updates.startingCredits !== undefined) room.options.credits = room.startingCredits = updates.startingCredits;
+
+    room.lastActivityAt = new Date().toISOString();
     this.sendRoomTopic(room);
     this.broadcastGameAnnouncement(room);
+
+    // Send in-room GO CTCP notice to players in the lobby
+    const packedOptions = packRa1GameOptions(room.options);
+    const configuredMapName = process.env.CNCNET_RA1_MAP_NAME?.trim();
+    const isSampleMap = room.currentMap === '[2] Equal Opportunity' && (!configuredMapName || configuredMapName === '[2] Equal Opportunity');
+    const mapSha1 = process.env.CNCNET_RA1_MAP_SHA1?.trim() || (isSampleMap ? 'cd454a0a7849d65bbc4a78e49ad7fbae5323623d' : '');
+    this.sendRaw(`NOTICE ${room.channel} :\x01GO ${packedOptions.replace(/,/g, ';')};0;${mapSha1};Standard;4;0;3\x01`);
   }
 
   public setRoomLocked(roomId: string, locked: boolean): HostedRoom {
@@ -867,8 +922,10 @@ export class CnCNetAutoHostBot {
 
     const gameVersion = process.env.CNCNET_RA1_GAME_VERSION?.trim() || '0.1.2';
     const configuredMapName = process.env.CNCNET_RA1_MAP_NAME?.trim();
-    const isSampleMap = room.currentMap === '[2] Equal Opportunity' && (!configuredMapName || configuredMapName === '[2] Equal Opportunity');
-    const mapSha1 = process.env.CNCNET_RA1_MAP_SHA1?.trim() || (isSampleMap ? 'cd454a0a7849d65bbc4a78e49ad7fbae5323623d' : '');
+    const mapSha1 =
+      process.env.CNCNET_RA1_MAP_SHA1?.trim() ||
+      KNOWN_MAP_SHA1S[room.currentMap] ||
+      'cd454a0a7849d65bbc4a78e49ad7fbae5323623d';
     if (!mapSha1) {
       this.logHosting('ERROR', `Game-list advertisement skipped: no SHA-1 configured for map '${room.currentMap}'. Set CNCNET_RA1_MAP_SHA1 to that map's exact hash.`);
       return;
@@ -881,7 +938,7 @@ export class CnCNetAutoHostBot {
     const mapName = configuredMapName || room.currentMap;
     const gameMode = process.env.CNCNET_RA1_GAME_MODE || 'Standard';
     const skill = process.env.CNCNET_RA1_SKILL || '0';
-    const gameOptions = process.env.CNCNET_RA1_GAME_OPTIONS?.trim() || '2305,0,0,3,10,0';
+    const gameOptions = process.env.CNCNET_RA1_GAME_OPTIONS?.trim() || packRa1GameOptions(room.options);
     const difficulty = process.env.CNCNET_RA1_DIFFICULTY || '-1';
     const protocolRevision = process.env.CNCNET_PROTOCOL_REVISION?.trim() || 'A';
 
@@ -912,6 +969,14 @@ export class CnCNetAutoHostBot {
   }
 
   private handlePlayerJoin(room: HostedRoom, nick: string, hostmask: string) {
+    if (
+      !nick ||
+      nick.toLowerCase() === this.currentNick.toLowerCase() ||
+      nick.toLowerCase().startsWith('ra1_autohost')
+    ) {
+      return;
+    }
+
     if (room.players.some((p) => p.nick.toLowerCase() === nick.toLowerCase())) {
       return;
     }
@@ -973,6 +1038,14 @@ export class CnCNetAutoHostBot {
   }
 
   private handleInRoomCtcpNotice(room: HostedRoom, senderNick: string, ctcpMsg: string) {
+    if (
+      !senderNick ||
+      senderNick.toLowerCase() === this.currentNick.toLowerCase() ||
+      senderNick.toLowerCase().startsWith('ra1_autohost')
+    ) {
+      return;
+    }
+
     let player = room.players.find((p) => p.nick.toLowerCase() === senderNick.toLowerCase());
     if (!player) {
       player = {
@@ -1000,6 +1073,21 @@ export class CnCNetAutoHostBot {
     } else if (cleanMsg === 'GO' || cleanMsg.startsWith('GO ')) {
       for (const roomPlayer of room.players) {
         roomPlayer.isHost = roomPlayer.nick.toLowerCase() === senderNick.toLowerCase();
+      }
+      if (cleanMsg.length > 3) {
+        try {
+          const payload = cleanMsg.substring(3).trim();
+          const parsed = unpackRa1GameOptions(payload);
+          room.options = { ...room.options, ...parsed, noTeslaZapEffectDelay: true };
+          room.bases = room.options.bases;
+          room.oreRegenerates = room.options.oreRegenerates;
+          room.crates = room.options.crates;
+          room.startingCredits = room.options.credits;
+          room.gameSpeed = room.options.gameSpeed;
+          this.broadcastGameAnnouncement(room);
+        } catch (e) {
+          // ignore
+        }
       }
       this.logHosting('SYSTEM', `Received XNA GO settings from host ${senderNick}.`, {
         roomId: room.id,
@@ -1051,13 +1139,7 @@ export class CnCNetAutoHostBot {
         maxPlayers: activeRoom.maxPlayers,
         currentMap: activeRoom.currentMap,
         mapPool: [...activeRoom.mapPool],
-        gameSpeed: activeRoom.gameSpeed,
-        startingCredits: activeRoom.startingCredits,
-        bases: activeRoom.bases,
-        oreRegenerates: activeRoom.oreRegenerates,
-        crates: activeRoom.crates,
-        fogOfWar: activeRoom.fogOfWar,
-        shroud: activeRoom.shroud,
+        options: { ...activeRoom.options },
         password: activeRoom.password,
       };
 
