@@ -19,25 +19,32 @@ const PORT = 3000;
 
 app.use(express.json());
 
+const isProduction = process.env.NODE_ENV === 'production';
+const autoConnect = process.env.CNCNET_AUTO_CONNECT === 'true' || isProduction;
+
 // Initialize CnCNet Red Alert 1 AutoHost Bot
 const cncnetBot = new CnCNetAutoHostBot({
   server: 'irc.cncnet.org',
   port: 6667,
   useSsl: false,
-  nick: 'RA1_AutoHost',
+  nick: process.env.CNCNET_BOT_NICK || (isProduction ? 'RA1_AutoHost' : 'RA1_DevBot'),
   realName: 'CnCNet Red Alert 1 AutoHost Bot',
   announcementChannel: '#cncnet-ra-games',
-  autoReconnect: true,
+  autoReconnect: isProduction,
   reconnectIntervalSec: 5,
   maxReconnectIntervalSec: 60,
   announcementIntervalSec: 30,
 });
 
-// Auto-connect on server launch
-try {
-  cncnetBot.connect();
-} catch (err) {
-  console.error('Initial CnCNet RA1 IRC connection failed:', err);
+// Auto-connect on server launch only in production or if explicitly configured
+if (autoConnect) {
+  try {
+    cncnetBot.connect();
+  } catch (err) {
+    console.error('Initial CnCNet RA1 IRC connection failed:', err);
+  }
+} else {
+  console.log('[CnCNet Bot] Dev preview mode: auto-connect to IRC is DISABLED to prevent interfering with published production bot.');
 }
 
 // ======================== API ROUTES ========================
