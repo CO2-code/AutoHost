@@ -1054,8 +1054,7 @@ export class CnCNetAutoHostBot {
     this.sendRaw(`MODE ${room.channel} +v ${nick}`);
 
     // Welcome message and rules
-    this.sendRoomMessage(room, `Welcome ${nick}! Type !ready when you're ready.`);
-    this.sendRoomMessage(room, `Commands: !ready, !unready, !maps, !vote <map>, !status, !help`);
+    this.sendRoomMessage(room, `This room is hosted automatically. I'm a bot and can't respond to messages.`);
 
     this.sendRoomTopic(room);
     this.broadcastGameAnnouncement(room);
@@ -1215,7 +1214,7 @@ export class CnCNetAutoHostBot {
 
     if (!room.isLocked && this.state === 'REGISTERED') {
       this.setRoomLocked(room.id, true);
-      this.sendRoomMessage(room, `[AUTO-HOST] Room full (${room.players.length}/${room.maxPlayers})! Room locked. Everyone type !ready.`);
+      this.sendRoomMessage(room, `[AUTO-HOST] Room full (${room.players.length}/${room.maxPlayers})! Room locked. Waiting for players to ready up in-game.`);
     }
 
     const allReady = room.players.length === room.maxPlayers && room.players.every((player) => player.isReady);
@@ -1230,7 +1229,7 @@ export class CnCNetAutoHostBot {
 
     if (readyTimer) return;
 
-    this.sendRoomMessage(room, '[AUTO-HOST] All players are READY! Launching in 15 seconds. Type !unready to cancel.');
+    this.sendRoomMessage(room, '[AUTO-HOST] All players are ready! Launching in 15 seconds.');
     const timer = setTimeout(() => {
       this.roomReadyCountdownTimers.delete(room.id);
       const activeRoom = this.rooms.get(room.id);
@@ -1389,7 +1388,7 @@ export class CnCNetAutoHostBot {
       case '!help':
       case '!commands':
       case '!h': {
-        this.sendRoomMessage(room, `[RA1 COMMANDS] !ready, !unready, !maps, !vote <map>, !status, !roll, !help`);
+        this.sendRoomMessage(room, `[RA1 COMMANDS] !maps, !vote <map>, !status, !roll, !help`);
         break;
       }
     }
