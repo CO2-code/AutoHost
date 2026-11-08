@@ -88,6 +88,7 @@ export interface RoomPlayer {
   joinedAt: string;
   hostmask?: string;
   votedMap?: string;
+  tunnelNegotiationSuccesses?: number;
 }
 
 export interface HostedRoom {
@@ -181,6 +182,8 @@ export class CnCNetAutoHostBot {
   private roomReadyCountdownTimers: Map<string, NodeJS.Timeout> = new Map();
   private roomFullLockTimers: Map<string, NodeJS.Timeout> = new Map();
   private roomTunnelRenegotiationTimers: Map<string, NodeJS.Timeout> = new Map();
+  private roomNamesSnapshots: Map<string, Map<string, string>> = new Map();
+  private roomNamesDepartures: Map<string, Set<string>> = new Map();
   private readonly roomTunnelRenegotiationDelayMs = 45000;
   private readonly roomFullLockDelayMs = 10000;
   private readonly readyLaunchCountdownMs = 15000;
@@ -581,6 +584,8 @@ export class CnCNetAutoHostBot {
       for (const room of this.rooms.values()) {
         if (room.channel.toLowerCase() === joinedChannel) {
           if (senderNick.toLowerCase() === this.currentNick.toLowerCase()) {
+            this.roomNamesSnapshots.set(room.id, new Map());
+            this.roomNamesDepartures.set(room.id, new Set());
             this.logHosting('SYSTEM', `Bot entered RA1 room channel ${room.channel}`, {
               roomId: room.id,
               channel: room.channel,
@@ -609,6 +614,7 @@ export class CnCNetAutoHostBot {
       for (const room of this.rooms.values()) {
         const matchesRoom = room.channel.toLowerCase() === channelTarget || command === 'QUIT';
         if (matchesRoom) {
+          this.roomNamesDepartures.get(room.id)?.add(targetNick.toLowerCase());
           this.handlePlayerLeave(room, targetNick, trailing || 'Left RA1 match room');
         }
       }
@@ -619,16 +625,35 @@ export class CnCNetAutoHostBot {
       const channel = (params[2] || '').toLowerCase();
       const room = Array.from(this.rooms.values()).find((item) => item.channel.toLowerCase() === channel);
       if (room && trailing) {
+        let snapshot = this.roomNamesSnapshots.get(room.id);
+        if (!snapshot) {
+          snapshot = new Map();
+          this.roomNamesSnapshots.set(room.id, snapshot);
+          this.roomNamesDepartures.set(room.id, new Set());
+        }
         for (const entry of trailing.split(/\s+/)) {
           const nick = entry.replace(/^[@+%&~]+/, '');
-          if (
-            nick &&
-            nick.toLowerCase() !== this.currentNick.toLowerCase() &&
-            !nick.toLowerCase().startsWith('ra1_autohost')
-          ) {
-            this.handlePlayerJoin(room, nick, '');
+          if (nick && nick.toLowerCase() !== this.currentNick.toLowerCase() && !nick.toLowerCase().startsWith('ra1_autohost')) {
+            snapshot.set(nick.toLowerCase(), nick);
           }
         }
+      }
+      return;
+    }
+
+    if (command === '366') {
+      const channel = (params[1] || '').toLowerCase();
+      const room = Array.from(this.rooms.values()).find((item) => item.channel.toLowerCase() === channel);
+      if (room) {
+        const snapshot = this.roomNamesSnapshots.get(room.id);
+        const departed = this.roomNamesDepartures.get(room.id) || new Set<string>();
+        if (snapshot) {
+          for (const [nickKey, nick] of snapshot) {
+            if (!departed.has(nickKey)) this.handlePlayerJoin(room, nick, '');
+          }
+        }
+        this.roomNamesSnapshots.delete(room.id);
+        this.roomNamesDepartures.delete(room.id);
       }
       return;
     }
@@ -802,6 +827,8 @@ export class CnCNetAutoHostBot {
       this.sendRaw(`PART ${room.channel} :${reason}`);
     }
 
+    this.roomNamesSnapshots.delete(roomId);
+    this.roomNamesDepartures.delete(roomId);
     this.rooms.delete(roomId);
     this.logHosting('ROOM_CLOSED', `RA1 room ${room.channel} closed.`, { roomId: room.id, details: reason });
   }
@@ -1044,6 +1071,7 @@ export class CnCNetAutoHostBot {
     };
 
     room.players.push(player);
+    for (const roomPlayer of room.players) roomPlayer.tunnelNegotiationSuccesses = 0;
     this.stats.totalPlayersServed++;
 
     this.logHosting('PLAYER_JOIN', `Player '${nick}' joined RA1 room ${room.channel} (Slot ${newSlot}/${room.maxPlayers})`, {
@@ -1081,6 +1109,7 @@ export class CnCNetAutoHostBot {
         clearTimeout(renegotiationTimer);
         this.roomTunnelRenegotiationTimers.delete(room.id);
       }
+      for (const roomPlayer of room.players) roomPlayer.tunnelNegotiationSuccesses = 0;
       this.logHosting('PLAYER_PART', `Player '${nick}' left ${room.channel}`, {
         roomId: room.id,
         channel: room.channel,
@@ -1107,10 +1136,32 @@ export class CnCNetAutoHostBot {
     }
 
     const cleanMsg = ctcpMsg.trim();
-    if (!cleanMsg.startsWith('R ')) return;
-
     const player = room.players.find((p) => p.nick.toLowerCase() === senderNick.toLowerCase());
     if (!player) return;
+
+    if (cleanMsg.startsWith('NEGRPT ')) {
+      const match = cleanMsg.match(/^NEGRPT\s+\S+:(\d+)(?::\d+)?$/i);
+      if (!match) return;
+      const status = Number.parseInt(match[1], 10);
+      if (status === 2) {
+        player.tunnelNegotiationSuccesses = (player.tunnelNegotiationSuccesses || 0) + 1;
+        const requiredSuccesses = room.players.length - 1;
+        if (requiredSuccesses > 0 && room.players.every((roomPlayer) => (roomPlayer.tunnelNegotiationSuccesses || 0) >= requiredSuccesses)) {
+          const timer = this.roomTunnelRenegotiationTimers.get(room.id);
+          if (timer) {
+            clearTimeout(timer);
+            this.roomTunnelRenegotiationTimers.delete(room.id);
+            this.logHosting('SYSTEM', \`Skipped XNA tunnel renegotiation because all \${room.players.length} players already negotiated successfully in \${room.channel}.\`, {
+              roomId: room.id,
+              channel: room.channel,
+            });
+          }
+        }
+      }
+      return;
+    }
+
+    if (!cleanMsg.startsWith('R ')) return;
 
     if (cleanMsg.startsWith('R ')) {
       const readyStatus = Number.parseInt(cleanMsg.substring(2).trim(), 10);
@@ -1215,6 +1266,15 @@ export class CnCNetAutoHostBot {
 
       const participants = activeRoom.players.map((player) => player.nick);
       if (participants.length < 2) return;
+      const requiredSuccesses = activeRoom.players.length - 1;
+      if (activeRoom.players.every((player) => (player.tunnelNegotiationSuccesses || 0) >= requiredSuccesses)) {
+        this.logHosting('SYSTEM', `Skipped XNA tunnel renegotiation because all ${activeRoom.players.length} players already negotiated successfully in ${activeRoom.channel}.`, {
+          roomId: activeRoom.id,
+          channel: activeRoom.channel,
+        });
+        return;
+      }
+      for (const player of activeRoom.players) player.tunnelNegotiationSuccesses = 0;
 
       this.sendRaw(`NOTICE ${activeRoom.channel} :\x01RENEGALL ${participants.join(',')}\x01`);
       this.logHosting('SYSTEM', `Requested XNA V3 tunnel renegotiation for ${participants.join(', ')} in ${activeRoom.channel}.`, {
