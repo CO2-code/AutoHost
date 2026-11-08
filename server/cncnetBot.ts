@@ -179,6 +179,8 @@ export class CnCNetAutoHostBot {
   private readonly postLaunchRoomRotationMs = 30000;
   private roomRotationTimers: Map<string, NodeJS.Timeout> = new Map();
   private roomReadyCountdownTimers: Map<string, NodeJS.Timeout> = new Map();
+  private roomFullLockTimers: Map<string, NodeJS.Timeout> = new Map();
+  private readonly roomFullLockDelayMs = 10000;
   private readonly readyLaunchCountdownMs = 15000;
 
   // Logs and Chat History
@@ -780,6 +782,11 @@ export class CnCNetAutoHostBot {
       clearTimeout(readyTimer);
       this.roomReadyCountdownTimers.delete(roomId);
     }
+    const fullLockTimer = this.roomFullLockTimers.get(roomId);
+    if (fullLockTimer) {
+      clearTimeout(fullLockTimer);
+      this.roomFullLockTimers.delete(roomId);
+    }
 
     this.sendRoomMessage(room, `[HOST] Red Alert 1 room is being closed: ${reason}`);
 
@@ -1177,10 +1184,15 @@ export class CnCNetAutoHostBot {
     if (room.status === 'PLAYING') return;
 
     const readyTimer = this.roomReadyCountdownTimers.get(room.id);
+    const fullLockTimer = this.roomFullLockTimers.get(room.id);
     if (room.players.length < room.maxPlayers) {
       if (readyTimer) {
         clearTimeout(readyTimer);
         this.roomReadyCountdownTimers.delete(room.id);
+      }
+      if (fullLockTimer) {
+        clearTimeout(fullLockTimer);
+        this.roomFullLockTimers.delete(room.id);
       }
       if (room.isLocked && this.state === 'REGISTERED') {
         this.setRoomLocked(room.id, false);
@@ -1190,8 +1202,19 @@ export class CnCNetAutoHostBot {
     }
 
     if (!room.isLocked && this.state === 'REGISTERED') {
-      this.setRoomLocked(room.id, true);
-      this.sendRoomMessage(room, `[AUTO-HOST] Room full (${room.players.length}/${room.maxPlayers})! Room locked. Waiting for players to ready up in-game.`);
+      if (!fullLockTimer) {
+        this.sendRoomMessage(room, `[AUTO-HOST] Room full (${room.players.length}/${room.maxPlayers})! Waiting 10 seconds for players to synchronize before locking.`);
+        const timer = setTimeout(() => {
+          this.roomFullLockTimers.delete(room.id);
+          const activeRoom = this.rooms.get(room.id);
+          if (!activeRoom || activeRoom.status === 'PLAYING' || activeRoom.isLocked || activeRoom.players.length !== activeRoom.maxPlayers) return;
+          this.setRoomLocked(activeRoom.id, true);
+          this.sendRoomMessage(activeRoom, '[AUTO-HOST] Room locked. Waiting for players to ready up in-game.');
+          this.evaluateRoomAutomation(activeRoom);
+        }, this.roomFullLockDelayMs);
+        this.roomFullLockTimers.set(room.id, timer);
+      }
+      return;
     }
 
     const allReady = room.players.length === room.maxPlayers && room.players.every((player) => player.isReady);
