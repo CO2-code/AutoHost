@@ -1047,6 +1047,10 @@ export class CnCNetAutoHostBot {
   private handlePlayerLeave(room: HostedRoom, nick: string, reason: string) {
     const initialLen = room.players.length;
     room.players = room.players.filter((p) => p.nick.toLowerCase() !== nick.toLowerCase());
+    room.players.forEach((player, index) => {
+      player.slot = index + 1;
+      player.isReady = player.isReady && player.isHost;
+    });
 
     if (room.players.length !== initialLen) {
       this.logHosting('PLAYER_PART', `Player '${nick}' left ${room.channel}`, {
@@ -1073,19 +1077,12 @@ export class CnCNetAutoHostBot {
       return;
     }
 
-    let player = room.players.find((p) => p.nick.toLowerCase() === senderNick.toLowerCase());
-    if (!player) {
-      player = {
-        nick: senderNick,
-        slot: room.players.length + 1,
-        isReady: false,
-        isHost: false,
-        joinedAt: new Date().toISOString(),
-      };
-      room.players.push(player);
-    }
-
     const cleanMsg = ctcpMsg.trim();
+    if (!cleanMsg.startsWith('R ')) return;
+
+    const player = room.players.find((p) => p.nick.toLowerCase() === senderNick.toLowerCase());
+    if (!player) return;
+
     if (cleanMsg.startsWith('R ')) {
       const readyStatus = Number.parseInt(cleanMsg.substring(2).trim(), 10);
       if (!Number.isInteger(readyStatus) || readyStatus < 0 || readyStatus > 2) return;
