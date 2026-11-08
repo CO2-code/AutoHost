@@ -35,11 +35,16 @@ export interface GameDefinition {
 }
 
 export const KNOWN_MAP_SHA1S: Record<string, string> = {
-  '[2] Equal Opportunity': 'cd454a0a7849d65bbc4a78e49ad7fbae5323623d',
-  '[2] Snow Garden': 'a26569ec187a54b38d6a89beba85d1d6a6a57321',
-  '[4] Cold Pass': '09ff01859ec217cbe79ae52586940a02c8c4a169',
-  '[4] Island Plateau': 'b913d4c38d5f3089d38adcb519e917d0577a755b',
-  '[4] Gold Rush': 'ecda3fcfb61df4b5b7b99c7d41f02c6fb5b03577',
+  '[4] 4c Niklas FE v1.0 Fair': '5b3c770f2f3e7c960a7ee0f3ad51cc0380d353e2',
+  '[4] T-Dawg': '8bcf97bee9a8ae5423b6fb839abedf988af6a432',
+  '[4] Big Open Ore by NN': '360eee55ae49aeb0ac2ea7bbfb4383d9a87be99f',
+  '[4] Crumpet 8K .': 'e6463fa6f16299d471a76d054a35d3966d10a0dc',
+  "[4] Crush's Basement": '0b47d0a4a41eb4dc3b1ee5d1b95d5933ad92ef85',
+  '[4] Keep off the grass 2vs2 (AutoAlly)': '74da0904008334c5ea533947d33a339cdf3b1ec0',
+  '[4] Ornithology by NN': '9af4f8d9d2fe4c81670cf9a3d1ea3bd09a38642c',
+  '[4] P4 *Mini* Tourney Edition.': '01fcad06d84c87c4d8e78ea22ed84fa33769ac69',
+  '[4] Spacecraft by CB (ND edit)': '184587b71ed36e42701c95019588996e32ad2776',
+  '[4] Z-Canuta (Ore)': 'dd0e89e4b0bab6893845dff97669a5d075e8e94d',
 };
 
 export const RA1_DEFINITION: GameDefinition = {
@@ -50,11 +55,16 @@ export const RA1_DEFINITION: GameDefinition = {
   announcementChannel: '#cncnet-ra-games',
   lobbyChannelKey: 'ra1-derp',
   defaultMaps: [
-    '[2] Equal Opportunity',
-    '[4] Cold Pass',
-    '[4] Island Plateau',
-    '[4] Gold Rush',
-    '[2] Snow Garden',
+    '[4] 4c Niklas FE v1.0 Fair',
+    '[4] T-Dawg',
+    '[4] Big Open Ore by NN',
+    '[4] Crumpet 8K .',
+    "[4] Crush's Basement",
+    '[4] Keep off the grass 2vs2 (AutoAlly)',
+    '[4] Ornithology by NN',
+    '[4] P4 *Mini* Tourney Edition.',
+    '[4] Spacecraft by CB (ND edit)',
+    '[4] Z-Canuta (Ore)',
   ],
   defaultTitle: '[RA1] CnCNet AutoHost - Fast 1v1/2v2 [All Welcome]',
   defaultMaxPlayers: 4,
@@ -237,7 +247,7 @@ export class CnCNetAutoHostBot {
     this.createRoom({
       gameTitle: '[RA1] CnCNet AutoHost - Fast 1v1/2v2 [All Welcome]',
       maxPlayers: 4,
-      currentMap: '[2] Equal Opportunity',
+      currentMap: '[4] 4c Niklas FE v1.0 Fair',
       gameSpeed: 5,
       startingCredits: 10000,
       bases: true,
