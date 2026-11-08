@@ -280,7 +280,7 @@ export const DEFAULT_RA1_OPTIONS: Ra1GameOptions = {
   techLevel: 10,
   credits: 10000,
   unitCount: 0,
-  gameSpeed: '60 FPS',
+  gameSpeed: 'Maximum',
 
   bases: true,
   oreRegenerates: false,
