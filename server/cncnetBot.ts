@@ -956,8 +956,7 @@ export class CnCNetAutoHostBot {
     }
 
     const flags = `${room.isLocked ? '1' : '0'}${room.password ? '1' : '0'}${closed ? '1' : '0'}00`;
-    const hostAndPlayers = [this.currentNick, ...room.players.map((player) => player.nick)];
-    const players = hostAndPlayers.join(',');
+    const players = room.players.map((player) => player.nick).join(',');
     const tunnel = '[DYN]';
     const mapName = configuredMapName || room.currentMap;
     const gameMode = KNOWN_MAP_SHA1S[room.currentMap] ? 'Popular' : (process.env.CNCNET_RA1_GAME_MODE?.trim() || 'Standard');
