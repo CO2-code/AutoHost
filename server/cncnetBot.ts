@@ -830,12 +830,7 @@ export class CnCNetAutoHostBot {
     this.sendRoomTopic(room);
     this.broadcastGameAnnouncement(room);
 
-    // Send in-room GO CTCP notice to players in the lobby
-    const packedOptions = packRa1GameOptions(room.options);
-    const configuredMapName = process.env.CNCNET_RA1_MAP_NAME?.trim();
-    const isSampleMap = room.currentMap === '[2] Equal Opportunity' && (!configuredMapName || configuredMapName === '[2] Equal Opportunity');
-    const mapSha1 = process.env.CNCNET_RA1_MAP_SHA1?.trim() || (isSampleMap ? 'cd454a0a7849d65bbc4a78e49ad7fbae5323623d' : '');
-    this.sendRaw(`NOTICE ${room.channel} :\x01GO ${packedOptions.replace(/,/g, ';')};0;${mapSha1};Standard;4;0;3\x01`);
+    this.sendRoomGameOptions(room);
   }
 
   public setRoomLocked(roomId: string, locked: boolean): HostedRoom {
@@ -911,6 +906,37 @@ export class CnCNetAutoHostBot {
     this.sendRaw(`TOPIC ${room.channel} :B;ra`);
   }
 
+  private sendRoomGameOptions(room: HostedRoom) {
+    const packedOptions = packRa1GameOptions(room.options);
+    const configuredMapName = process.env.CNCNET_RA1_MAP_NAME?.trim();
+    const isSampleMap = room.currentMap === '[2] Equal Opportunity' && (!configuredMapName || configuredMapName === '[2] Equal Opportunity');
+    const mapSha1 = process.env.CNCNET_RA1_MAP_SHA1?.trim() || KNOWN_MAP_SHA1S[room.currentMap] || (isSampleMap ? 'cd454a0a7849d65bbc4a78e49ad7fbae5323623d' : '');
+    const gameMode = process.env.CNCNET_RA1_GAME_MODE?.trim() || 'Standard';
+    const frameSendRate = process.env.CNCNET_RA1_FRAME_SEND_RATE?.trim() || '4';
+    const maxAhead = process.env.CNCNET_RA1_MAX_AHEAD?.trim() || '0';
+    const protocolVersion = process.env.CNCNET_RA1_PROTOCOL_VERSION?.trim() || '3';
+    const randomSeed = process.env.CNCNET_RA1_RANDOM_SEED?.trim() || '0';
+    const removeStartingLocations = '0';
+    const tunnelMode = '1';
+    const difficulty = '-1';
+    const payload = [
+      ...packedOptions.split(','),
+      '0',
+      mapSha1,
+      gameMode,
+      frameSendRate,
+      maxAhead,
+      protocolVersion,
+      randomSeed,
+      removeStartingLocations,
+      room.currentMap,
+      tunnelMode,
+      difficulty,
+    ].join(';');
+
+    this.sendRaw(`NOTICE ${room.channel} :\x01GO ${payload}\x01`);
+  }
+
   private sendRoomMessage(room: HostedRoom, text: string) {
     this.sendRaw(`PRIVMSG ${room.channel} :${text}`);
     this.recordChat({
@@ -945,7 +971,7 @@ export class CnCNetAutoHostBot {
     const mapName = configuredMapName || room.currentMap;
     const gameMode = process.env.CNCNET_RA1_GAME_MODE || 'Standard';
     const skill = process.env.CNCNET_RA1_SKILL || '0';
-    const gameOptions = process.env.CNCNET_RA1_GAME_OPTIONS?.trim() || packRa1GameOptions(room.options);
+    const gameOptions = packRa1GameOptions(room.options);
     const difficulty = process.env.CNCNET_RA1_DIFFICULTY || '-1';
     const protocolRevision = process.env.CNCNET_PROTOCOL_REVISION?.trim() || 'A';
 
@@ -1023,6 +1049,7 @@ export class CnCNetAutoHostBot {
 
     this.sendRoomTopic(room);
     this.broadcastGameAnnouncement(room);
+    this.sendRoomGameOptions(room);
     this.evaluateRoomAutomation(room);
   }
 
