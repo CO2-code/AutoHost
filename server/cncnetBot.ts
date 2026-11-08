@@ -1140,11 +1140,21 @@ export class CnCNetAutoHostBot {
     const attempts = (store.get(identity) || []).filter((timestamp) => now - timestamp < windowMs);
     attempts.push(now);
     store.set(identity, attempts);
+    if (store.size > 2000) {
+      for (const [key, values] of store) {
+        if (now - values[values.length - 1] > windowMs) store.delete(key);
+      }
+      while (store.size > 5000) {
+        const oldestKey = store.keys().next().value;
+        if (oldestKey === undefined) break;
+        store.delete(oldestKey);
+      }
+    }
     return attempts.length;
   }
 
   private applyTemporaryRoomBan(room: HostedRoom, nick: string, hostmask: string, reason: string) {
-    const validHostmask = /^[^!@\\s]+@[^!@\\s]+$/.test(hostmask);
+    const validHostmask = /^[^!@\s]+@[^!@\s]+$/.test(hostmask);
     const mask = validHostmask ? `*!${hostmask}` : `${nick}!*@*`;
     const timerKey = `${room.channel.toLowerCase()}:${mask.toLowerCase()}`;
     const existingTimer = this.temporaryBanTimers.get(timerKey);
