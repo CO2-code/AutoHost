@@ -168,6 +168,8 @@ export class CnCNetAutoHostBot {
   private rooms: Map<string, HostedRoom> = new Map();
   private readonly postLaunchRoomRotationMs = 30000;
   private roomRotationTimers: Map<string, NodeJS.Timeout> = new Map();
+  private roomReadyCountdownTimers: Map<string, NodeJS.Timeout> = new Map();
+  private readonly readyLaunchCountdownMs = 15000;
 
   // Logs and Chat History
   private hostingLogs: HostingLogEntry[] = [];
@@ -776,6 +778,11 @@ export class CnCNetAutoHostBot {
       clearTimeout(rotationTimer);
       this.roomRotationTimers.delete(roomId);
     }
+    const readyTimer = this.roomReadyCountdownTimers.get(roomId);
+    if (readyTimer) {
+      clearTimeout(readyTimer);
+      this.roomReadyCountdownTimers.delete(roomId);
+    }
 
     this.sendRoomMessage(room, `[HOST] Red Alert 1 room is being closed: ${reason}`);
 
@@ -1016,6 +1023,7 @@ export class CnCNetAutoHostBot {
 
     this.sendRoomTopic(room);
     this.broadcastGameAnnouncement(room);
+    this.evaluateRoomAutomation(room);
   }
 
   private handlePlayerLeave(room: HostedRoom, nick: string, reason: string) {
@@ -1034,6 +1042,7 @@ export class CnCNetAutoHostBot {
 
       this.sendRoomTopic(room);
       this.broadcastGameAnnouncement(room);
+      this.evaluateRoomAutomation(room);
     }
   }
 
@@ -1070,6 +1079,7 @@ export class CnCNetAutoHostBot {
         details: readyStatus === 2 ? 'Auto-ready' : readyStatus === 1 ? 'Ready' : 'Not ready',
       });
       this.broadcastGameAnnouncement(room);
+      this.evaluateRoomAutomation(room);
     } else if (cleanMsg === 'GO' || cleanMsg.startsWith('GO ')) {
       for (const roomPlayer of room.players) {
         roomPlayer.isHost = roomPlayer.nick.toLowerCase() === senderNick.toLowerCase();
@@ -1150,6 +1160,67 @@ export class CnCNetAutoHostBot {
     this.roomRotationTimers.set(room.id, timer);
   }
 
+  private evaluateRoomAutomation(room: HostedRoom) {
+    if (room.status === 'PLAYING') return;
+
+    const readyTimer = this.roomReadyCountdownTimers.get(room.id);
+    if (room.players.length < room.maxPlayers) {
+      if (readyTimer) {
+        clearTimeout(readyTimer);
+        this.roomReadyCountdownTimers.delete(room.id);
+      }
+      if (room.isLocked && this.state === 'REGISTERED') {
+        this.setRoomLocked(room.id, false);
+        this.sendRoomMessage(room, '[AUTO-HOST] A player left. The room is unlocked while waiting for a replacement.');
+      }
+      return;
+    }
+
+    if (!room.isLocked && this.state === 'REGISTERED') {
+      this.setRoomLocked(room.id, true);
+      this.sendRoomMessage(room, `[AUTO-HOST] Room full (${room.players.length}/${room.maxPlayers})! Room locked. Everyone type !ready.`);
+    }
+
+    const allReady = room.players.length === room.maxPlayers && room.players.every((player) => player.isReady);
+    if (!allReady) {
+      if (readyTimer) {
+        clearTimeout(readyTimer);
+        this.roomReadyCountdownTimers.delete(room.id);
+        this.sendRoomMessage(room, '[AUTO-HOST] Launch countdown cancelled because not everyone is ready.');
+      }
+      return;
+    }
+
+    if (readyTimer) return;
+
+    this.sendRoomMessage(room, '[AUTO-HOST] All players are READY! Launching in 15 seconds. Type !unready to cancel.');
+    const timer = setTimeout(() => {
+      this.roomReadyCountdownTimers.delete(room.id);
+      const activeRoom = this.rooms.get(room.id);
+      if (!activeRoom || activeRoom.status === 'PLAYING') return;
+      if (
+        activeRoom.players.length !== activeRoom.maxPlayers ||
+        !activeRoom.players.every((player) => player.isReady) ||
+        !activeRoom.isLocked
+      ) {
+        this.sendRoomMessage(activeRoom, '[AUTO-HOST] Launch cancelled: player readiness or room lock changed.');
+        return;
+      }
+
+      try {
+        this.launchRoom(activeRoom.id);
+      } catch (error: any) {
+        this.sendRoomMessage(activeRoom, `[AUTO-HOST] Launch failed: ${error.message}`);
+        this.logHosting('ERROR', `Automatic launch failed: ${error.message}`, {
+          roomId: activeRoom.id,
+          channel: activeRoom.channel,
+        });
+      }
+    }, this.readyLaunchCountdownMs);
+
+    this.roomReadyCountdownTimers.set(room.id, timer);
+  }
+
   private handlePlayerCommand(room: HostedRoom, senderNick: string, rawText: string) {
     const text = stripIrcFormatting(rawText);
     const parts = text.split(/\s+/);
@@ -1193,11 +1264,8 @@ export class CnCNetAutoHostBot {
           nick: senderNick,
         });
 
-        if (readyCount === room.players.length && room.players.length >= 2) {
-          this.sendRoomMessage(room, `[AUTO-HOST] All commanders are READY! (${readyCount}/${room.players.length})`);
-        }
-
         this.broadcastGameAnnouncement(room);
+        this.evaluateRoomAutomation(room);
         break;
       }
 
@@ -1207,6 +1275,7 @@ export class CnCNetAutoHostBot {
         player.isReady = false;
         this.sendRoomMessage(room, `[UNREADY] ${senderNick} is no longer ready.`);
         this.broadcastGameAnnouncement(room);
+        this.evaluateRoomAutomation(room);
         break;
       }
 
