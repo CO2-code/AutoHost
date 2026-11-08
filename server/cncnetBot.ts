@@ -217,9 +217,10 @@ export class CnCNetAutoHostBot {
       announcementIntervalSec: 15,
       welcomeMessage: 'Welcome to this RA1 IRC room! Type !maps to view maps and !vote to vote for the next map.',
       ...customConfig,
+      nick: 'BOTHOST',
     };
 
-    this.currentNick = this.config.nick;
+    this.currentNick = 'BOTHOST';
 
     // Logs directory
     this.logsDir = path.resolve(process.cwd(), 'logs');
@@ -701,26 +702,13 @@ export class CnCNetAutoHostBot {
   // ======================== RA1 ROOM MANAGEMENT ========================
 
   public createRoom(options: Partial<HostedRoom>): HostedRoom {
-    const channelFilePath = path.join(this.logsDir, 'room_channel.txt');
     let channelName = options.channel;
-    if (!channelName && fs.existsSync(channelFilePath)) {
-      try {
-        const saved = fs.readFileSync(channelFilePath, 'utf8').trim();
-        if (saved.startsWith('#cncnet-ra-game')) {
-          channelName = saved;
-        }
-      } catch (e) {
-        // ignore
-      }
-    }
-    if (!channelName) {
-      const randomSuffix = Math.floor(Math.random() * 9000000 + 1000000);
-      channelName = `#cncnet-ra-game${randomSuffix}`;
-    }
-    try {
-      fs.writeFileSync(channelFilePath, channelName, 'utf8');
-    } catch (e) {
-      // ignore
+    const activeChannels = new Set(Array.from(this.rooms.values()).map((room) => room.channel.toLowerCase()));
+    if (!channelName || activeChannels.has(channelName.toLowerCase())) {
+      do {
+        const randomSuffix = Math.floor(Math.random() * 9000000 + 1000000);
+        channelName = `#cncnet-ra-game${randomSuffix}`;
+      } while (activeChannels.has(channelName.toLowerCase()));
     }
 
     const roomOptions: Ra1GameOptions = {
@@ -802,12 +790,6 @@ export class CnCNetAutoHostBot {
     }
 
     this.rooms.delete(roomId);
-    if (this.rooms.size === 0) {
-      try {
-        const channelFilePath = path.join(this.logsDir, 'room_channel.txt');
-        if (fs.existsSync(channelFilePath)) fs.unlinkSync(channelFilePath);
-      } catch (e) {}
-    }
     this.logHosting('ROOM_CLOSED', `RA1 room ${room.channel} closed.`, { roomId: room.id, details: reason });
   }
 
@@ -1054,7 +1036,7 @@ export class CnCNetAutoHostBot {
     this.sendRaw(`MODE ${room.channel} +v ${nick}`);
 
     // Welcome message and rules
-    this.sendRoomMessage(room, `This room is hosted automatically. I'm a bot and can't respond to messages.`);
+    this.sendRoomMessage(room, `Welcome ${nick}! This room is hosted automatically. I'm a bot and can't respond to messages.`);
 
     this.sendRoomTopic(room);
     this.broadcastGameAnnouncement(room);
