@@ -208,7 +208,6 @@ export class CnCNetAutoHostBot {
       ],
       port: 6667,
       useSsl: false,
-      nick: 'BOTHOST',
       realName: 'CnCNet Red Alert 1 AutoHost Bot',
       announcementChannel: '#cncnet-ra-games',
       autoReconnect: true,
