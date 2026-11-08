@@ -208,7 +208,7 @@ export class CnCNetAutoHostBot {
       ],
       port: 6667,
       useSsl: false,
-      nick: 'RA1_AutoHost',
+      nick: 'BOTHOST',
       realName: 'CnCNet Red Alert 1 AutoHost Bot',
       announcementChannel: '#cncnet-ra-games',
       autoReconnect: true,
@@ -453,7 +453,7 @@ export class CnCNetAutoHostBot {
     this.logHosting('SYSTEM', `Connected to CnCNet server! Registering nick '${this.currentNick}' for RA1...`);
 
     this.sendRaw(`NICK ${this.currentNick}`);
-    this.sendRaw(`USER ${this.currentNick} 0 * :${this.config.realName}`);
+    this.sendRaw(`USER RA 0 * :${this.config.realName}`);
   }
 
   // ======================== IRC LINE PARSER ========================
@@ -921,7 +921,7 @@ export class CnCNetAutoHostBot {
     const configuredMapName = process.env.CNCNET_RA1_MAP_NAME?.trim();
     const isSampleMap = room.currentMap === '[2] Equal Opportunity' && (!configuredMapName || configuredMapName === '[2] Equal Opportunity');
     const mapSha1 = process.env.CNCNET_RA1_MAP_SHA1?.trim() || KNOWN_MAP_SHA1S[room.currentMap] || (isSampleMap ? 'cd454a0a7849d65bbc4a78e49ad7fbae5323623d' : '');
-    const gameMode = process.env.CNCNET_RA1_GAME_MODE?.trim() || 'Standard';
+    const gameMode = KNOWN_MAP_SHA1S[room.currentMap] ? 'Popular' : (process.env.CNCNET_RA1_GAME_MODE?.trim() || 'Standard');
     const frameSendRate = process.env.CNCNET_RA1_FRAME_SEND_RATE?.trim() || '4';
     const maxAhead = process.env.CNCNET_RA1_MAX_AHEAD?.trim() || '0';
     const protocolVersion = process.env.CNCNET_RA1_PROTOCOL_VERSION?.trim() || '3';
@@ -931,7 +931,7 @@ export class CnCNetAutoHostBot {
     const difficulty = '-1';
     const payload = [
       ...packedOptions.split(','),
-      '0',
+      KNOWN_MAP_SHA1S[room.currentMap] ? '1' : '0',
       mapSha1,
       gameMode,
       frameSendRate,
@@ -979,7 +979,7 @@ export class CnCNetAutoHostBot {
     const players = hostAndPlayers.join(',');
     const tunnel = '[DYN]';
     const mapName = configuredMapName || room.currentMap;
-    const gameMode = process.env.CNCNET_RA1_GAME_MODE || 'Standard';
+    const gameMode = KNOWN_MAP_SHA1S[room.currentMap] ? 'Popular' : (process.env.CNCNET_RA1_GAME_MODE?.trim() || 'Standard');
     const skill = process.env.CNCNET_RA1_SKILL || '0';
     const gameOptions = packRa1GameOptions(room.options);
     const difficulty = process.env.CNCNET_RA1_DIFFICULTY || '-1';
