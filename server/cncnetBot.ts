@@ -904,6 +904,15 @@ export class CnCNetAutoHostBot {
     this.sendRaw(`TOPIC ${room.channel} :B;ra`);
   }
 
+  private sendRoomPlayerOptions(room: HostedRoom) {
+    const entries = room.players.map((player) => {
+      const playerOptions = Buffer.alloc(4);
+      playerOptions.writeUInt32LE(0, 0);
+      return `${player.nick};${playerOptions.readInt32LE(0)};${player.isReady ? 1 : 0};`;
+    });
+    this.sendRaw(`NOTICE ${room.channel} :\\x01PO ${entries.join('')}\\x01`);
+  }
+
   private sendRoomGameOptions(room: HostedRoom) {
     const packedOptions = packRa1GameOptions(room.options);
     const configuredMapName = process.env.CNCNET_RA1_MAP_NAME?.trim();
@@ -1046,6 +1055,7 @@ export class CnCNetAutoHostBot {
     this.sendRoomTopic(room);
     this.broadcastGameAnnouncement(room);
     this.sendRoomGameOptions(room);
+    this.sendRoomPlayerOptions(room);
     this.evaluateRoomAutomation(room);
   }
 
@@ -1069,6 +1079,7 @@ export class CnCNetAutoHostBot {
 
       this.sendRoomTopic(room);
       this.broadcastGameAnnouncement(room);
+      this.sendRoomPlayerOptions(room);
       this.evaluateRoomAutomation(room);
     }
   }
@@ -1099,6 +1110,7 @@ export class CnCNetAutoHostBot {
         details: readyStatus === 2 ? 'Auto-ready' : readyStatus === 1 ? 'Ready' : 'Not ready',
       });
       this.broadcastGameAnnouncement(room);
+      this.sendRoomPlayerOptions(room);
       this.evaluateRoomAutomation(room);
     } else if (cleanMsg === 'GO' || cleanMsg.startsWith('GO ')) {
       for (const roomPlayer of room.players) {
@@ -1301,6 +1313,7 @@ export class CnCNetAutoHostBot {
         });
 
         this.broadcastGameAnnouncement(room);
+        this.sendRoomPlayerOptions(room);
         this.evaluateRoomAutomation(room);
         break;
       }
@@ -1311,6 +1324,7 @@ export class CnCNetAutoHostBot {
         player.isReady = false;
         this.sendRoomMessage(room, `[UNREADY] ${senderNick} is no longer ready.`);
         this.broadcastGameAnnouncement(room);
+        this.sendRoomPlayerOptions(room);
         this.evaluateRoomAutomation(room);
         break;
       }
