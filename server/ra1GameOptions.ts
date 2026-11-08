@@ -61,7 +61,7 @@ export const RA1_DROPDOWNS = {
     spawnIniOption: 'GameSpeed',
     // MultiplayerGameLobby.ini overrides cmbGameSpeedCap
     options: ['Maximum', '60 FPS', '30 FPS', '20 FPS', '15 FPS', '12 FPS', '10 FPS'] as const,
-    defaultIndex: 1, // 60 FPS
+    defaultIndex: 0, // Maximum
   },
 };
 
