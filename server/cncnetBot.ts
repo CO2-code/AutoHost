@@ -1054,7 +1054,7 @@ export class CnCNetAutoHostBot {
     this.sendRaw(`MODE ${room.channel} +v ${nick}`);
 
     // Welcome message and rules
-    this.sendRoomMessage(room, `Welcome ${nick}! [Slot ${newSlot}/${room.maxPlayers}] | Map: ${room.currentMap} | Speed: ${room.gameSpeed} | Credits: $${room.startingCredits}`);
+    this.sendRoomMessage(room, `Welcome ${nick}! Type !ready when you're ready.`);
     this.sendRoomMessage(room, `Commands: !ready, !unready, !maps, !vote <map>, !status, !help`);
 
     this.sendRoomTopic(room);
@@ -1361,6 +1361,7 @@ export class CnCNetAutoHostBot {
           this.sendRoomMessage(room, `[MAP SWITCH] Majority voted! Map changed to: ${room.currentMap}`);
           this.sendRoomTopic(room);
           this.broadcastGameAnnouncement(room);
+          this.sendRoomGameOptions(room);
         }
         break;
       }
