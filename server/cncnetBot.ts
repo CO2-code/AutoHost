@@ -180,6 +180,8 @@ export class CnCNetAutoHostBot {
   private roomRotationTimers: Map<string, NodeJS.Timeout> = new Map();
   private roomReadyCountdownTimers: Map<string, NodeJS.Timeout> = new Map();
   private roomFullLockTimers: Map<string, NodeJS.Timeout> = new Map();
+  private roomTunnelRenegotiationTimers: Map<string, NodeJS.Timeout> = new Map();
+  private readonly roomTunnelRenegotiationDelayMs = 45000;
   private readonly roomFullLockDelayMs = 10000;
   private readonly readyLaunchCountdownMs = 15000;
 
@@ -787,6 +789,11 @@ export class CnCNetAutoHostBot {
       clearTimeout(fullLockTimer);
       this.roomFullLockTimers.delete(roomId);
     }
+    const renegotiationTimer = this.roomTunnelRenegotiationTimers.get(roomId);
+    if (renegotiationTimer) {
+      clearTimeout(renegotiationTimer);
+      this.roomTunnelRenegotiationTimers.delete(roomId);
+    }
 
     this.sendRoomMessage(room, `[HOST] Red Alert 1 room is being closed: ${reason}`);
 
@@ -1057,6 +1064,7 @@ export class CnCNetAutoHostBot {
     this.sendRoomGameOptions(room);
     this.sendRoomPlayerOptions(room);
     this.evaluateRoomAutomation(room);
+    this.scheduleRoomTunnelRenegotiation(room);
   }
 
   private handlePlayerLeave(room: HostedRoom, nick: string, reason: string) {
@@ -1068,6 +1076,11 @@ export class CnCNetAutoHostBot {
     });
 
     if (room.players.length !== initialLen) {
+      const renegotiationTimer = this.roomTunnelRenegotiationTimers.get(room.id);
+      if (renegotiationTimer) {
+        clearTimeout(renegotiationTimer);
+        this.roomTunnelRenegotiationTimers.delete(room.id);
+      }
       this.logHosting('PLAYER_PART', `Player '${nick}' left ${room.channel}`, {
         roomId: room.id,
         channel: room.channel,
@@ -1190,6 +1203,28 @@ export class CnCNetAutoHostBot {
     }, this.postLaunchRoomRotationMs);
 
     this.roomRotationTimers.set(room.id, timer);
+  }
+
+  private scheduleRoomTunnelRenegotiation(room: HostedRoom) {
+    if (room.status === 'PLAYING' || room.players.length !== room.maxPlayers || this.roomTunnelRenegotiationTimers.has(room.id)) return;
+
+    const timer = setTimeout(() => {
+      this.roomTunnelRenegotiationTimers.delete(room.id);
+      const activeRoom = this.rooms.get(room.id);
+      if (!activeRoom || activeRoom.status === 'PLAYING' || activeRoom.players.length !== activeRoom.maxPlayers) return;
+
+      const participants = activeRoom.players.map((player) => player.nick);
+      if (participants.length < 2) return;
+
+      this.sendRaw(`NOTICE ${activeRoom.channel} :\x01RENEGALL ${participants.join(',')}\x01`);
+      this.logHosting('SYSTEM', `Requested XNA V3 tunnel renegotiation for ${participants.join(', ')} in ${activeRoom.channel}.`, {
+        roomId: activeRoom.id,
+        channel: activeRoom.channel,
+        details: participants.join(','),
+      });
+    }, this.roomTunnelRenegotiationDelayMs);
+
+    this.roomTunnelRenegotiationTimers.set(room.id, timer);
   }
 
   private evaluateRoomAutomation(room: HostedRoom) {
