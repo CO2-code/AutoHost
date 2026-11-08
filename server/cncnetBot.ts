@@ -113,6 +113,7 @@ export interface HostedRoom {
   shroud?: boolean;
   status: 'WAITING' | 'PLAYING';
   isLocked: boolean;
+  aiLevel?: number;
   players: RoomPlayer[];
   mapVotes: Record<string, number>;
   createdAt: string;
@@ -182,11 +183,17 @@ export class CnCNetAutoHostBot {
   private roomReadyCountdownTimers: Map<string, NodeJS.Timeout> = new Map();
   private roomFullLockTimers: Map<string, NodeJS.Timeout> = new Map();
   private roomTunnelRenegotiationTimers: Map<string, NodeJS.Timeout> = new Map();
+  private roomSoloAiTimers: Map<string, NodeJS.Timeout> = new Map();
+  private joinAttemptsByHost: Map<string, number[]> = new Map();
+  private messageAttemptsByHost: Map<string, number[]> = new Map();
+  private temporaryBanTimers: Map<string, NodeJS.Timeout> = new Map();
   private roomNamesSnapshots: Map<string, Map<string, string>> = new Map();
   private roomNamesDepartures: Map<string, Set<string>> = new Map();
   private readonly roomTunnelRenegotiationDelayMs = 45000;
   private readonly roomFullLockDelayMs = 10000;
   private readonly readyLaunchCountdownMs = 15000;
+  private readonly soloAiFallbackDelayMs = 180000;
+  private readonly spamBanDurationMs = 600000;
 
   // Logs and Chat History
   private hostingLogs: HostingLogEntry[] = [];
@@ -703,6 +710,19 @@ export class CnCNetAutoHostBot {
         const isDirectToBot = target.toLowerCase() === this.currentNick.toLowerCase();
 
         if (isTargetRoom || isDirectToBot) {
+          if (isTargetRoom && senderNick.toLowerCase() !== this.currentNick.toLowerCase()) {
+            const identity = (senderHostmask || senderNick).toLowerCase();
+            if (this.recordRateAttempt(this.messageAttemptsByHost, identity, 10000) > 8) {
+              this.applyTemporaryRoomBan(room, senderNick, senderHostmask, 'Message flooding');
+              this.logHosting('ERROR', `Blocked message flood from '${senderNick}' in ${room.channel}.`, {
+                roomId: room.id,
+                channel: room.channel,
+                nick: senderNick,
+                details: senderHostmask,
+              });
+              return;
+            }
+          }
           this.recordChat({
             id: Math.random().toString(36).substring(2, 9),
             timestamp: new Date().toISOString(),
@@ -821,6 +841,11 @@ export class CnCNetAutoHostBot {
     if (renegotiationTimer) {
       clearTimeout(renegotiationTimer);
       this.roomTunnelRenegotiationTimers.delete(roomId);
+    }
+    const soloAiTimer = this.roomSoloAiTimers.get(roomId);
+    if (soloAiTimer) {
+      clearTimeout(soloAiTimer);
+      this.roomSoloAiTimers.delete(roomId);
     }
 
     this.sendRoomMessage(room, `[HOST] Red Alert 1 room is being closed: ${reason}`);
@@ -947,6 +972,7 @@ export class CnCNetAutoHostBot {
       playerOptions.writeUInt32LE(0, 0);
       return `${player.nick};${playerOptions.readInt32LE(0)};${player.isReady ? 1 : 0};`;
     });
+    if (room.aiLevel !== undefined) entries.push(`${room.aiLevel};0;`);
     this.sendRaw(`NOTICE ${room.channel} :\x01PO ${entries.join('')}\x01`);
   }
 
@@ -1057,6 +1083,17 @@ export class CnCNetAutoHostBot {
       return;
     }
 
+    if (hostmask && this.recordRateAttempt(this.joinAttemptsByHost, hostmask.toLowerCase(), 60000) >= 5) {
+      this.applyTemporaryRoomBan(room, nick, hostmask, 'Join flooding');
+      this.logHosting('ERROR', `Blocked join flood from '${nick}' in ${room.channel}.`, {
+        roomId: room.id,
+        channel: room.channel,
+        nick,
+        details: hostmask,
+      });
+      return;
+    }
+
     if (room.players.length >= room.maxPlayers) {
       this.sendRoomMessage(room, `[RA1 HOST] Room is full (${room.players.length}/${room.maxPlayers}).`);
       this.sendRaw(`KICK ${room.channel} ${nick} :Room is full`);
@@ -1096,6 +1133,38 @@ export class CnCNetAutoHostBot {
     this.sendRoomPlayerOptions(room);
     this.evaluateRoomAutomation(room);
     this.scheduleRoomTunnelRenegotiation(room);
+  }
+
+  private recordRateAttempt(store: Map<string, number[]>, identity: string, windowMs: number): number {
+    const now = Date.now();
+    const attempts = (store.get(identity) || []).filter((timestamp) => now - timestamp < windowMs);
+    attempts.push(now);
+    store.set(identity, attempts);
+    return attempts.length;
+  }
+
+  private applyTemporaryRoomBan(room: HostedRoom, nick: string, hostmask: string, reason: string) {
+    const validHostmask = /^[^!@\\s]+@[^!@\\s]+$/.test(hostmask);
+    const mask = validHostmask ? `*!${hostmask}` : `${nick}!*@*`;
+    const timerKey = `${room.channel.toLowerCase()}:${mask.toLowerCase()}`;
+    const existingTimer = this.temporaryBanTimers.get(timerKey);
+    if (existingTimer) clearTimeout(existingTimer);
+
+    if (this.state === 'REGISTERED') {
+      this.sendRaw(`MODE ${room.channel} +b ${mask}`);
+      this.sendRaw(`KICK ${room.channel} ${nick} :${reason}`);
+    }
+
+    this.temporaryBanTimers.set(timerKey, setTimeout(() => {
+      this.temporaryBanTimers.delete(timerKey);
+      if (this.state === 'REGISTERED' && this.rooms.has(room.id)) {
+        this.sendRaw(`MODE ${room.channel} -b ${mask}`);
+      }
+    }, this.spamBanDurationMs));
+
+    if (room.players.some((player) => player.nick.toLowerCase() === nick.toLowerCase())) {
+      this.handlePlayerLeave(room, nick, reason);
+    }
   }
 
   private handlePlayerLeave(room: HostedRoom, nick: string, reason: string) {
@@ -1293,6 +1362,47 @@ export class CnCNetAutoHostBot {
   private evaluateRoomAutomation(room: HostedRoom) {
     if (room.status === 'PLAYING') return;
 
+    const soloAiTimer = this.roomSoloAiTimers.get(room.id);
+    if (room.maxPlayers !== 2 || room.players.length !== 1 || room.aiLevel !== undefined) {
+      if (soloAiTimer) {
+        clearTimeout(soloAiTimer);
+        this.roomSoloAiTimers.delete(room.id);
+      }
+    } else if (!soloAiTimer) {
+      this.sendRoomMessage(room, '[AUTO-HOST] One player is waiting. A Medium AI will join in 3 minutes if nobody else arrives.');
+      const timer = setTimeout(() => {
+        this.roomSoloAiTimers.delete(room.id);
+        const activeRoom = this.rooms.get(room.id);
+        if (
+          !activeRoom ||
+          activeRoom.status === 'PLAYING' ||
+          activeRoom.maxPlayers !== 2 ||
+          activeRoom.players.length !== 1 ||
+          activeRoom.aiLevel !== undefined ||
+          this.state !== 'REGISTERED'
+        ) return;
+
+        activeRoom.aiLevel = 1;
+        activeRoom.players[0].isReady = true;
+        this.sendRoomPlayerOptions(activeRoom);
+        this.sendRoomMessage(activeRoom, '[AUTO-HOST] No second player joined. A Medium AI has joined; locking and launching now.');
+
+        try {
+          if (!activeRoom.isLocked) this.setRoomLocked(activeRoom.id, true);
+          this.launchRoom(activeRoom.id);
+        } catch (error: any) {
+          activeRoom.aiLevel = undefined;
+          activeRoom.players[0].isReady = false;
+          this.sendRoomPlayerOptions(activeRoom);
+          this.logHosting('ERROR', `Medium AI fallback launch failed: ${error.message}`, {
+            roomId: activeRoom.id,
+            channel: activeRoom.channel,
+          });
+        }
+      }, this.soloAiFallbackDelayMs);
+      this.roomSoloAiTimers.set(room.id, timer);
+    }
+
     const readyTimer = this.roomReadyCountdownTimers.get(room.id);
     const fullLockTimer = this.roomFullLockTimers.get(room.id);
     if (room.players.length < room.maxPlayers) {
@@ -1385,17 +1495,8 @@ export class CnCNetAutoHostBot {
     }
     const arg = stripIrcFormatting(parts.slice(1).join(' ')).trim();
 
-    let player = room.players.find((p) => p.nick.toLowerCase() === senderNick.toLowerCase());
-    if (!player) {
-      player = {
-        nick: senderNick,
-        slot: room.players.length + 1,
-        isReady: false,
-        isHost: false,
-        joinedAt: new Date().toISOString(),
-      };
-      room.players.push(player);
-    }
+    const player = room.players.find((p) => p.nick.toLowerCase() === senderNick.toLowerCase());
+    if (!player) return;
 
     switch (cmd) {
       case '!ready':
