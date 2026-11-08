@@ -583,7 +583,7 @@ export class CnCNetAutoHostBot {
               roomId: room.id,
               channel: room.channel,
             });
-            this.sendRaw(`MODE ${room.channel} +klnNs ${this.getRoomChannelKey(room)} ${room.maxPlayers}`);
+            this.sendRaw(`MODE ${room.channel} +klnNs ${this.getRoomChannelKey(room)} ${room.maxPlayers + 1}`);
             this.sendRoomTopic(room);
             this.broadcastGameAnnouncement(room);
           } else {
