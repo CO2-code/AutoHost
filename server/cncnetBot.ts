@@ -407,6 +407,12 @@ export class CnCNetAutoHostBot {
   }
 
   public disconnect(reason = 'Operator requested shutdown', keepAutoReconnect = false) {
+    if (this.sendTimer) {
+      clearTimeout(this.sendTimer);
+      this.sendTimer = null;
+    }
+    this.sendQueue = [];
+
     if (!keepAutoReconnect) {
       this.config.autoReconnect = false;
     }
