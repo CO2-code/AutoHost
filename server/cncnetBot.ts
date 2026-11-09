@@ -995,9 +995,9 @@ export class CnCNetAutoHostBot {
     const isSampleMap = room.currentMap === '[2] Equal Opportunity' && (!configuredMapName || configuredMapName === '[2] Equal Opportunity');
     const mapSha1 = process.env.CNCNET_RA1_MAP_SHA1?.trim() || KNOWN_MAP_SHA1S[room.currentMap] || (isSampleMap ? 'cd454a0a7849d65bbc4a78e49ad7fbae5323623d' : '');
     const gameMode = KNOWN_MAP_SHA1S[room.currentMap] ? 'Popular' : (process.env.CNCNET_RA1_GAME_MODE?.trim() || 'Standard');
-    const frameSendRate = process.env.CNCNET_RA1_FRAME_SEND_RATE?.trim() || '7';
+    const frameSendRate = '7';
     const maxAhead = process.env.CNCNET_RA1_MAX_AHEAD?.trim() || '0';
-    const protocolVersion = process.env.CNCNET_RA1_PROTOCOL_VERSION?.trim() || '2';
+    const protocolVersion = '2';
     const randomSeed = process.env.CNCNET_RA1_RANDOM_SEED?.trim() || '0';
     const removeStartingLocations = '0';
     const tunnelMode = '1';
