@@ -768,8 +768,8 @@ export class CnCNetAutoHostBot {
     }
 
     const newRoom: HostedRoom = {
-      id: Math.random().toString(36).substring(2, 9),
-      hostNick: this.currentNick,
+      id: `${this.config.nick}-${Math.random().toString(36).substring(2, 9)}`,
+      hostNick: this.config.nick,
       gameType: 'RA',
       gameTitle: options.gameTitle || RA1_DEFINITION.defaultTitle,
       channel: channelName,
