@@ -494,7 +494,7 @@ export class CnCNetAutoHostBot {
       this.socket.write(command + '\r\n');
       this.logActivity('OUTGOING', command);
     } else {
-      this.logActivity('ERROR', \`Cannot send, socket not writable: \${command}\`);
+      this.logActivity('ERROR', `Cannot send, socket not writable: ${command}`);
     }
   }
   private onConnected() {
