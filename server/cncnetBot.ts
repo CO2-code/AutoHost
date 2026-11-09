@@ -88,6 +88,10 @@ export interface RoomPlayer {
   joinedAt: string;
   hostmask?: string;
   votedMap?: string;
+  sideId?: number;
+  colorId?: number;
+  startingLocation?: number;
+  teamId?: number;
   tunnelNegotiationSuccesses?: number;
 }
 
@@ -954,17 +958,19 @@ export class CnCNetAutoHostBot {
     this.sendRaw(`JOIN ${room.channel} ${this.getRoomChannelKey(room)}`);
   }
 
-  private sendRoomTopic(room: HostedRoom) {
-    this.sendRaw(`TOPIC ${room.channel} :B;ra`);
-  }
-
-  private sendRoomPlayerOptions(room: HostedRoom) {
+  private s  private sendRoomPlayerOptions(room: HostedRoom) {
     const entries = room.players.map((player) => {
-      const playerOptions = Buffer.alloc(4);
-      playerOptions.writeUInt32LE(0, 0);
-      return `${player.nick};${playerOptions.readInt32LE(0)};${player.isReady ? 1 : 0};`;
+      const packedOptions = (
+        (player.teamId || 0) |
+        ((player.startingLocation || 0) << 8) |
+        ((player.colorId || 0) << 16) |
+        ((player.sideId || 0) << 24)
+      ) | 0;
+      return player.nick + ';' + packedOptions + ';' + (player.isReady ? 1 : 0) + ';';
     });
-    if (room.aiLevel !== undefined) entries.push(`${room.aiLevel};0;`);
+    if (room.aiLevel !== undefined) entries.push(room.aiLevel + ';0;');
+    this.sendRaw('NOTICE ' + room.channel + ' :\x01PO ' + entries.join('') + '\x01');
+  }};0;`);
     this.sendRaw(`NOTICE ${room.channel} :\x01PO ${entries.join('')}\x01`);
   }
 
@@ -1235,7 +1241,18 @@ export class CnCNetAutoHostBot {
       return;
     }
 
-    if (!cleanMsg.startsWith('R ')) return;
+    if (cleanMsg.startsWith('OR ')) {
+      const match = cleanMsg.match(/^OR\s+(-?\d+)$/i);
+      if (!match) return;
+      const packed = Number.parseInt(match[1], 10);
+      if (!Number.isSafeInteger(packed)) return;
+      player.sideId = packed & 0xff;
+      player.colorId = (packed >>> 8) & 0xff;
+      player.startingLocation = (packed >>> 16) & 0xff;
+      player.teamId = (packed >>> 24) & 0xff;
+      this.sendRoomPlayerOptions(room);
+      return;
+    }
 
     if (cleanMsg.startsWith('R ')) {
       const readyStatus = Number.parseInt(cleanMsg.substring(2).trim(), 10);
