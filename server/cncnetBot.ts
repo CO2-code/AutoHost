@@ -1189,11 +1189,11 @@ export class CnCNetAutoHostBot {
     this.sendRoomMessage(room, `Welcome ${nick}! This room is hosted automatically. I'm a bot and can't respond to messages.`);
 
     this.sendRoomTopic(room);
-    this.broadcastGameAnnouncement(room);
     this.sendRoomPlayerOptions(room);
     this.sendRoomLobbySettings(room);
     this.sendRoomGameOptions(room);
     this.sendRoomPlayerExtraOptions(room);
+    this.broadcastGameAnnouncement(room);
     this.evaluateRoomAutomation(room);
     this.scheduleRoomTunnelRenegotiation(room);
   }
