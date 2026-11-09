@@ -141,7 +141,6 @@ export default function App() {
   const [successToast, setSuccessToast] = useState<string | null>(null);
 
   // Bot Config Form state
-  const [configNick, setConfigNick] = useState('RA1_AutoHost');
   const [configServer, setConfigServer] = useState('irc.cncnet.org');
   const [configPort, setConfigPort] = useState(6667);
   const [configUseSsl, setConfigUseSsl] = useState(false);
@@ -176,7 +175,6 @@ export default function App() {
         }
         if (json.gameDefinition) setGameDef(json.gameDefinition);
         if (json.config) {
-          setConfigNick(json.config.nick);
           setConfigServer(json.config.server);
           setConfigPort(json.config.port);
           setConfigUseSsl(json.config.useSsl);
