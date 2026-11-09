@@ -958,7 +958,11 @@ export class CnCNetAutoHostBot {
     this.sendRaw(`JOIN ${room.channel} ${this.getRoomChannelKey(room)}`);
   }
 
-  private s  private sendRoomPlayerOptions(room: HostedRoom) {
+  private sendRoomTopic(room: HostedRoom) {
+    this.sendRaw(`TOPIC ${room.channel} :B;ra`);
+  }
+
+  private sendRoomPlayerOptions(room: HostedRoom) {
     const entries = room.players.map((player) => {
       const packedOptions = (
         (player.teamId || 0) |
@@ -966,14 +970,11 @@ export class CnCNetAutoHostBot {
         ((player.colorId || 0) << 16) |
         ((player.sideId || 0) << 24)
       ) | 0;
-      return player.nick + ';' + packedOptions + ';' + (player.isReady ? 1 : 0) + ';';
+      return `${player.nick};${packedOptions};${player.isReady ? 1 : 0};`;
     });
-    if (room.aiLevel !== undefined) entries.push(room.aiLevel + ';0;');
-    this.sendRaw('NOTICE ' + room.channel + ' :\x01PO ' + entries.join('') + '\x01');
-  }};0;`);
+    if (room.aiLevel !== undefined) entries.push(`${room.aiLevel};0;`);
     this.sendRaw(`NOTICE ${room.channel} :\x01PO ${entries.join('')}\x01`);
   }
-
   private sendRoomGameOptions(room: HostedRoom) {
     const packedOptions = packRa1GameOptions(room.options);
     const configuredMapName = process.env.CNCNET_RA1_MAP_NAME?.trim();
