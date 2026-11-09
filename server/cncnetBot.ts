@@ -181,7 +181,7 @@ export class CnCNetAutoHostBot {
   private currentServerIndex = 0;
 
   // Rate-limiting outgoing queue (GameSurge flood protection)
-  private sendQueue: string[] = [];
+  private sendQueue: Array<{ command: string; key?: string }> = [];
   private sendTimer: NodeJS.Timeout | null = null;
   private readonly sendIntervalMs = 200;
 
@@ -447,15 +447,56 @@ export class CnCNetAutoHostBot {
     }, 1500);
   }
 
+  private sendQueued(command: string, key?: string) {
+    if (key) {
+      const existingIndex = this.sendQueue.findIndex((item) => item.key === key);
+      if (existingIndex >= 0) {
+        this.sendQueue[existingIndex].command = command;
+      } else {
+        this.sendQueue.push({ command, key });
+      }
+    } else {
+      this.sendQueue.push({ command });
+    }
+
+    if (!this.sendTimer) {
+      this.sendTimer = setTimeout(() => this.processSendQueue(), this.sendIntervalMs);
+    }
+  }
+
+  private processSendQueue() {
+    this.sendTimer = null;
+    if (!this.socket || this.socket.destroyed || !this.socket.writable) {
+      this.sendQueue = [];
+      return;
+    }
+
+    const next = this.sendQueue.shift();
+    if (next) this.sendRaw(next.command);
+
+    if (this.sendQueue.length > 0) {
+      this.sendTimer = setTimeout(() => this.processSendQueue(), this.sendIntervalMs);
+    }
+  }
+
+  private flushSendQueue() {
+    if (this.sendTimer) {
+      clearTimeout(this.sendTimer);
+      this.sendTimer = null;
+    }
+
+    const pending = this.sendQueue.splice(0);
+    for (const item of pending) this.sendRaw(item.command);
+  }
+
   public sendRaw(command: string) {
     if (this.socket && !this.socket.destroyed && this.socket.writable) {
       this.socket.write(command + '\r\n');
       this.logActivity('OUTGOING', command);
     } else {
-      this.logActivity('ERROR', `Cannot send, socket not writable: ${command}`);
+      this.logActivity('ERROR', \`Cannot send, socket not writable: \${command}\`);
     }
   }
-
   private onConnected() {
     this.state = 'CONNECTED';
     this.connectedSince = new Date();
@@ -933,6 +974,7 @@ export class CnCNetAutoHostBot {
     });
     const startPayload = `${gameId};${startEntries.join(';')}`;
 
+    this.flushSendQueue();
     this.sendRaw(`NOTICE ${room.channel} :\x01STARTV3 ${startPayload}\x01`);
     this.sendRaw(`NOTICE ${room.channel} :\x01STRTD\x01`);
 
@@ -969,11 +1011,11 @@ export class CnCNetAutoHostBot {
   private sendRoomLobbySettings(room: HostedRoom) {
     const skillLevel = Math.max(0, Math.min(3, Number.parseInt(process.env.CNCNET_RA1_SKILL || '0', 10) || 0));
     const passwordFlag = room.password ? 1 : 0;
-    this.sendRaw(`NOTICE ${room.channel} :\x01GSETTINGS ${room.gameTitle};${room.maxPlayers};${skillLevel};${passwordFlag}\x01`);
+    this.sendQueued(`NOTICE ${room.channel} :\x01GSETTINGS ${room.gameTitle};${room.maxPlayers};${skillLevel};${passwordFlag}\x01`, `GSETTINGS:${room.channel.toLowerCase()}`);
   }
 
   private sendRoomPlayerExtraOptions(room: HostedRoom) {
-    this.sendRaw(`NOTICE ${room.channel} :\x01PEO 00000;\x01`);
+    this.sendQueued(`NOTICE ${room.channel} :\x01PEO 00000;\x01`, `PEO:${room.channel.toLowerCase()}`);
   }
 
   private sendRoomPlayerOptions(room: HostedRoom) {
@@ -987,7 +1029,7 @@ export class CnCNetAutoHostBot {
       return `${player.nick};${packedOptions};${player.isReady ? 1 : 0};`;
     });
     if (room.aiLevel !== undefined) entries.push(`${room.aiLevel};0;`);
-    this.sendRaw(`NOTICE ${room.channel} :\x01PO ${entries.join('')}\x01`);
+    this.sendQueued(`NOTICE ${room.channel} :\x01PO ${entries.join('')}\x01`, `PO:${room.channel.toLowerCase()}`);
   }
   private sendRoomGameOptions(room: HostedRoom) {
     const packedOptions = packRa1GameOptions(room.options);
@@ -1017,7 +1059,7 @@ export class CnCNetAutoHostBot {
       difficulty,
     ].join(';');
 
-    this.sendRaw(`NOTICE ${room.channel} :\x01GO ${payload}\x01`);
+    this.sendQueued(`NOTICE ${room.channel} :\x01GO ${payload}\x01`, `GO:${room.channel.toLowerCase()}`);
   }
 
   private sendRoomMessage(room: HostedRoom, text: string) {
@@ -1080,7 +1122,7 @@ export class CnCNetAutoHostBot {
       fields.push(difficulty);
     }
 
-    this.sendRaw(`NOTICE ${this.config.announcementChannel} :\x01GAME ${fields.join(';')}\x01`);
+    this.sendQueued(`NOTICE ${this.config.announcementChannel} :\x01GAME ${fields.join(';')}\x01`, `GAME:${this.config.announcementChannel.toLowerCase()}:${room.channel.toLowerCase()}`);
   }
 
   private handlePlayerJoin(room: HostedRoom, nick: string, hostmask: string) {
@@ -1766,6 +1808,12 @@ export class CnCNetAutoHostBot {
     if (this.state === 'DISCONNECTED' || this.state === 'RECONNECTING') {
       return;
     }
+
+    if (this.sendTimer) {
+      clearTimeout(this.sendTimer);
+      this.sendTimer = null;
+    }
+    this.sendQueue = [];
 
     this.state = 'DISCONNECTED';
     this.connectedSince = null;
