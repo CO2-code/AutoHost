@@ -767,6 +767,7 @@ export class CnCNetAutoHostBot {
     const roomOptions: Ra1GameOptions = {
       ...DEFAULT_RA1_OPTIONS,
       ...(options.options || {}),
+      gameSpeed: 'Maximum',
       noTeslaZapEffectDelay: true,
     };
 
@@ -876,7 +877,7 @@ export class CnCNetAutoHostBot {
     if (updates.password !== undefined) room.password = updates.password || undefined;
 
     if (updates.options) {
-      room.options = { ...room.options, ...updates.options, noTeslaZapEffectDelay: true };
+      room.options = { ...room.options, ...updates.options, gameSpeed: 'Maximum', noTeslaZapEffectDelay: true };
       room.bases = room.options.bases;
       room.oreRegenerates = room.options.oreRegenerates;
       room.crates = room.options.crates;
@@ -1395,6 +1396,10 @@ export class CnCNetAutoHostBot {
         ) return;
 
         activeRoom.aiLevel = 1;
+        activeRoom.options.gameSpeed = '60 FPS';
+        activeRoom.gameSpeed = '60 FPS';
+        this.sendRoomGameOptions(activeRoom);
+        this.broadcastGameAnnouncement(activeRoom);
         activeRoom.players[0].isReady = true;
         this.sendRoomPlayerOptions(activeRoom);
         this.sendRoomMessage(activeRoom, '[AUTO-HOST] No second player joined. A Medium AI has joined; locking and launching now.');
