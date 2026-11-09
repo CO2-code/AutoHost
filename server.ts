@@ -124,7 +124,7 @@ app.post('/api/bot/config', (req, res) => {
     if (server !== undefined) updates.server = server;
     if (port !== undefined) updates.port = Number(port);
     if (useSsl !== undefined) updates.useSsl = Boolean(useSsl);
-     if (autoReconnect !== undefined) updates.autoReconnect = Boolean(autoReconnect);
+    if (autoReconnect !== undefined) updates.autoReconnect = Boolean(autoReconnect);
     if (announcementIntervalSec !== undefined) updates.announcementIntervalSec = Number(announcementIntervalSec);
 
     for (const bot of allBots()) bot.updateConfig(updates);
