@@ -181,7 +181,7 @@ export class CnCNetAutoHostBot {
   private currentServerIndex = 0;
 
   // Rate-limiting outgoing queue (GameSurge flood protection)
-  private sendQueue: Array<{ command: string; key?: string }> = [];
+  private sendQueue: Array<{ command: string; key?: string; priority: number }> = [];
   private sendTimer: NodeJS.Timeout | null = null;
   private readonly sendIntervalMs = 200;
 
@@ -453,16 +453,22 @@ export class CnCNetAutoHostBot {
     }, 1500);
   }
 
-  private sendQueued(command: string, key?: string) {
+  private sendQueued(command: string, key?: string, priority = 10) {
     if (key) {
       const existingIndex = this.sendQueue.findIndex((item) => item.key === key);
       if (existingIndex >= 0) {
         this.sendQueue[existingIndex].command = command;
       } else {
-        this.sendQueue.push({ command, key });
+        const item = { command, key, priority };
+        const insertIndex = this.sendQueue.findIndex((queued) => queued.priority > priority);
+        if (insertIndex < 0) this.sendQueue.push(item);
+        else this.sendQueue.splice(insertIndex, 0, item);
       }
     } else {
-      this.sendQueue.push({ command });
+      const item = { command, priority };
+      const insertIndex = this.sendQueue.findIndex((queued) => queued.priority > priority);
+      if (insertIndex < 0) this.sendQueue.push(item);
+      else this.sendQueue.splice(insertIndex, 0, item);
     }
 
     if (!this.sendTimer) {
@@ -1017,11 +1023,11 @@ export class CnCNetAutoHostBot {
   private sendRoomLobbySettings(room: HostedRoom) {
     const skillLevel = Math.max(0, Math.min(3, Number.parseInt(process.env.CNCNET_RA1_SKILL || '0', 10) || 0));
     const passwordFlag = room.password ? 1 : 0;
-    this.sendQueued(`NOTICE ${room.channel} :\x01GSETTINGS ${room.gameTitle};${room.maxPlayers};${skillLevel};${passwordFlag}\x01`, `GSETTINGS:${room.channel.toLowerCase()}`);
+    this.sendQueued(`NOTICE ${room.channel} :\x01GSETTINGS ${room.gameTitle};${room.maxPlayers};${skillLevel};${passwordFlag}\x01`, `GSETTINGS:${room.channel.toLowerCase()}`, 11);
   }
 
   private sendRoomPlayerExtraOptions(room: HostedRoom) {
-    this.sendQueued(`NOTICE ${room.channel} :\x01PEO 00000;\x01`, `PEO:${room.channel.toLowerCase()}`);
+    this.sendQueued(`NOTICE ${room.channel} :\x01PEO 00000;\x01`, `PEO:${room.channel.toLowerCase()}`, 11);
   }
 
   private sendRoomPlayerOptions(room: HostedRoom) {
@@ -1035,7 +1041,7 @@ export class CnCNetAutoHostBot {
       return `${player.nick};${packedOptions};${player.isReady ? 1 : 0};`;
     });
     if (room.aiLevel !== undefined) entries.push(`${room.aiLevel};0;`);
-    this.sendQueued(`NOTICE ${room.channel} :\x01PO ${entries.join('')}\x01`, `PO:${room.channel.toLowerCase()}`);
+    this.sendQueued(`NOTICE ${room.channel} :\x01PO ${entries.join('')}\x01`, `PO:${room.channel.toLowerCase()}`, 10);
   }
   private sendRoomGameOptions(room: HostedRoom) {
     const packedOptions = packRa1GameOptions(room.options);
@@ -1065,7 +1071,7 @@ export class CnCNetAutoHostBot {
       difficulty,
     ].join(';');
 
-    this.sendQueued(`NOTICE ${room.channel} :\x01GO ${payload}\x01`, `GO:${room.channel.toLowerCase()}`);
+    this.sendQueued(`NOTICE ${room.channel} :\x01GO ${payload}\x01`, `GO:${room.channel.toLowerCase()}`, 11);
   }
 
   private sendRoomMessage(room: HostedRoom, text: string) {
@@ -1128,7 +1134,7 @@ export class CnCNetAutoHostBot {
       fields.push(difficulty);
     }
 
-    this.sendQueued(`NOTICE ${this.config.announcementChannel} :\x01GAME ${fields.join(';')}\x01`, `GAME:${this.config.announcementChannel.toLowerCase()}:${room.channel.toLowerCase()}`);
+    this.sendQueued(`NOTICE ${this.config.announcementChannel} :\x01GAME ${fields.join(';')}\x01`, `GAME:${this.config.announcementChannel.toLowerCase()}:${room.channel.toLowerCase()}`, 20);
   }
 
   private handlePlayerJoin(room: HostedRoom, nick: string, hostmask: string) {
