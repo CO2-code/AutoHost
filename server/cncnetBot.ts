@@ -93,6 +93,7 @@ export interface RoomPlayer {
 
 export interface HostedRoom {
   id: string;
+  hostNick: string;
   gameType: 'RA';
   gameTitle: string;
   channel: string;
@@ -231,10 +232,10 @@ export class CnCNetAutoHostBot {
       announcementIntervalSec: 15,
       welcomeMessage: 'Welcome to this RA1 IRC room! Type !maps to view maps and !vote to vote for the next map.',
       ...customConfig,
-      nick: 'BOTHOST',
+      nick: customConfig?.nick || 'BOTHOST',
     };
 
-    this.currentNick = 'BOTHOST';
+    this.currentNick = this.config.nick;
 
     // Logs directory
     this.logsDir = path.resolve(process.cwd(), 'logs');
@@ -257,20 +258,6 @@ export class CnCNetAutoHostBot {
         }
       }
     }, 1000);
-
-    // Initial default RA1 room
-    this.createRoom({
-      gameTitle: '[AUTO] 2v2',
-      maxPlayers: 4,
-      currentMap: '[4] 4c Niklas FE v1.0 Fair',
-      gameSpeed: 5,
-      startingCredits: 10000,
-      bases: true,
-      oreRegenerates: true,
-      crates: false,
-      fogOfWar: true,
-      shroud: true,
-    });
 
     this.logSystem(`CnCNet RA1 IRC room bot initialized. Game-list channel: ${this.config.announcementChannel}`);
   }
@@ -755,6 +742,7 @@ export class CnCNetAutoHostBot {
   // ======================== RA1 ROOM MANAGEMENT ========================
 
   public createRoom(options: Partial<HostedRoom>): HostedRoom {
+    if (this.rooms.size > 0) throw new Error(`${this.currentNick} already has an active room. Close it before creating another.`);
     let channelName = options.channel;
     const activeChannels = new Set(Array.from(this.rooms.values()).map((room) => room.channel.toLowerCase()));
     if (!channelName || activeChannels.has(channelName.toLowerCase())) {
@@ -781,6 +769,7 @@ export class CnCNetAutoHostBot {
 
     const newRoom: HostedRoom = {
       id: Math.random().toString(36).substring(2, 9),
+      hostNick: this.currentNick,
       gameType: 'RA',
       gameTitle: options.gameTitle || RA1_DEFINITION.defaultTitle,
       channel: channelName,
