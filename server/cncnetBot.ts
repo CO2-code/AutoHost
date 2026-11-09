@@ -93,6 +93,10 @@ export interface RoomPlayer {
   startingLocation?: number;
   teamId?: number;
   tunnelNegotiationSuccesses?: number;
+  tunnelNegotiationInProgress?: number;
+  tunnelNegotiationFailures?: number;
+  tunnelNegotiationReportedPeers?: number;
+  tunnelNegotiationReportReceived?: boolean;
 }
 
 export interface HostedRoom {
@@ -962,6 +966,16 @@ export class CnCNetAutoHostBot {
     this.sendRaw(`TOPIC ${room.channel} :B;ra`);
   }
 
+  private sendRoomLobbySettings(room: HostedRoom) {
+    const skillLevel = Math.max(0, Math.min(3, Number.parseInt(process.env.CNCNET_RA1_SKILL || '0', 10) || 0));
+    const passwordFlag = room.password ? 1 : 0;
+    this.sendRaw(`NOTICE ${room.channel} :\x01GSETTINGS ${room.gameTitle};${room.maxPlayers};${skillLevel};${passwordFlag}\x01`);
+  }
+
+  private sendRoomPlayerExtraOptions(room: HostedRoom) {
+    this.sendRaw(`NOTICE ${room.channel} :\x01PEO 00000;\x01`);
+  }
+
   private sendRoomPlayerOptions(room: HostedRoom) {
     const entries = room.players.map((player) => {
       const packedOptions = (
@@ -981,9 +995,9 @@ export class CnCNetAutoHostBot {
     const isSampleMap = room.currentMap === '[2] Equal Opportunity' && (!configuredMapName || configuredMapName === '[2] Equal Opportunity');
     const mapSha1 = process.env.CNCNET_RA1_MAP_SHA1?.trim() || KNOWN_MAP_SHA1S[room.currentMap] || (isSampleMap ? 'cd454a0a7849d65bbc4a78e49ad7fbae5323623d' : '');
     const gameMode = KNOWN_MAP_SHA1S[room.currentMap] ? 'Popular' : (process.env.CNCNET_RA1_GAME_MODE?.trim() || 'Standard');
-    const frameSendRate = process.env.CNCNET_RA1_FRAME_SEND_RATE?.trim() || '4';
+    const frameSendRate = process.env.CNCNET_RA1_FRAME_SEND_RATE?.trim() || '7';
     const maxAhead = process.env.CNCNET_RA1_MAX_AHEAD?.trim() || '0';
-    const protocolVersion = process.env.CNCNET_RA1_PROTOCOL_VERSION?.trim() || '3';
+    const protocolVersion = process.env.CNCNET_RA1_PROTOCOL_VERSION?.trim() || '2';
     const randomSeed = process.env.CNCNET_RA1_RANDOM_SEED?.trim() || '0';
     const removeStartingLocations = '0';
     const tunnelMode = '1';
@@ -1128,8 +1142,10 @@ export class CnCNetAutoHostBot {
 
     this.sendRoomTopic(room);
     this.broadcastGameAnnouncement(room);
+    this.sendRoomLobbySettings(room);
     this.sendRoomGameOptions(room);
     this.sendRoomPlayerOptions(room);
+    this.sendRoomPlayerExtraOptions(room);
     this.evaluateRoomAutomation(room);
     this.scheduleRoomTunnelRenegotiation(room);
   }
@@ -1221,23 +1237,51 @@ export class CnCNetAutoHostBot {
     if (!player) return;
 
     if (cleanMsg.startsWith('NEGRPT ')) {
-      const match = cleanMsg.match(/^NEGRPT\s+\S+:(\d+)(?::\d+)?$/i);
-      if (!match) return;
-      const status = Number.parseInt(match[1], 10);
-      if (status === 2) {
-        player.tunnelNegotiationSuccesses = (player.tunnelNegotiationSuccesses || 0) + 1;
-        const requiredSuccesses = room.players.length - 1;
-        if (requiredSuccesses > 0 && room.players.every((roomPlayer) => (roomPlayer.tunnelNegotiationSuccesses || 0) >= requiredSuccesses)) {
-          const timer = this.roomTunnelRenegotiationTimers.get(room.id);
-          if (timer) {
-            clearTimeout(timer);
-            this.roomTunnelRenegotiationTimers.delete(room.id);
-            this.logHosting('SYSTEM', `Skipped XNA tunnel renegotiation because all ${room.players.length} players already negotiated successfully in ${room.channel}.`, {
-              roomId: room.id,
-              channel: room.channel,
-            });
-          }
+      const report = cleanMsg.substring(7).trim();
+      const playerIds = new Map<string, RoomPlayer>();
+      for (const roomPlayer of room.players) {
+        const id = createHash('sha1').update(`${roomPlayer.nick}:${room.channel}`, 'utf8').digest().readUInt32LE(0).toString(16).padStart(8, '0');
+        playerIds.set(id, roomPlayer);
+      }
+
+      let successes = 0;
+      let inProgress = 0;
+      let failures = 0;
+      let reportedPeers = 0;
+
+      for (const entry of report.split('|')) {
+        const parts = entry.split(':');
+        if (parts.length < 2) continue;
+        const target = playerIds.get(parts[0].toLowerCase());
+        if (!target || target.nick.toLowerCase() === senderNick.toLowerCase()) continue;
+        const status = Number.parseInt(parts[1], 10);
+        if (![0, 1, 2, 3].includes(status)) continue;
+        reportedPeers++;
+        if (status === 1) inProgress++;
+        else if (status === 2) successes++;
+        else if (status === 3) failures++;
+      }
+
+      player.tunnelNegotiationSuccesses = successes;
+      player.tunnelNegotiationInProgress = inProgress;
+      player.tunnelNegotiationFailures = failures;
+      player.tunnelNegotiationReportedPeers = reportedPeers;
+      player.tunnelNegotiationReportReceived = true;
+
+      const requiredPeers = room.players.length - 1;
+      if (requiredPeers > 0 && room.players.every((roomPlayer) =>
+        roomPlayer.tunnelNegotiationReportReceived &&
+        roomPlayer.tunnelNegotiationSuccesses === requiredPeers
+      )) {
+        const timer = this.roomTunnelRenegotiationTimers.get(room.id);
+        if (timer) {
+          clearTimeout(timer);
+          this.roomTunnelRenegotiationTimers.delete(room.id);
         }
+        this.logHosting('SYSTEM', `Skipped XNA tunnel renegotiation because all ${room.players.length} players reported successful negotiations in ${room.channel}.`, {
+          roomId: room.id,
+          channel: room.channel,
+        });
       }
       return;
     }
@@ -1358,15 +1402,39 @@ export class CnCNetAutoHostBot {
 
       const participants = activeRoom.players.map((player) => player.nick);
       if (participants.length < 2) return;
-      const requiredSuccesses = activeRoom.players.length - 1;
-      if (activeRoom.players.every((player) => (player.tunnelNegotiationSuccesses || 0) >= requiredSuccesses)) {
+      const requiredPeers = activeRoom.players.length - 1;
+      const allReported = activeRoom.players.every((player) =>
+        player.tunnelNegotiationReportReceived &&
+        player.tunnelNegotiationReportedPeers === requiredPeers
+      );
+      const allSucceeded = allReported && activeRoom.players.every((player) =>
+        player.tunnelNegotiationSuccesses === requiredPeers
+      );
+      if (allSucceeded) {
         this.logHosting('SYSTEM', `Skipped XNA tunnel renegotiation because all ${activeRoom.players.length} players already negotiated successfully in ${activeRoom.channel}.`, {
           roomId: activeRoom.id,
           channel: activeRoom.channel,
         });
         return;
       }
-      for (const player of activeRoom.players) player.tunnelNegotiationSuccesses = 0;
+
+      const negotiationInProgress = activeRoom.players.some((player) => (player.tunnelNegotiationInProgress || 0) > 0);
+      const negotiationFailed = activeRoom.players.some((player) => (player.tunnelNegotiationFailures || 0) > 0);
+      if (!allReported || negotiationInProgress || !negotiationFailed) {
+        this.logHosting('SYSTEM', `Skipped automatic XNA tunnel renegotiation in ${activeRoom.channel}: negotiation reports are incomplete or negotiations are still running; no failed pair is confirmed.`, {
+          roomId: activeRoom.id,
+          channel: activeRoom.channel,
+        });
+        return;
+      }
+
+      for (const player of activeRoom.players) {
+        player.tunnelNegotiationSuccesses = 0;
+        player.tunnelNegotiationInProgress = 0;
+        player.tunnelNegotiationFailures = 0;
+        player.tunnelNegotiationReportedPeers = 0;
+        player.tunnelNegotiationReportReceived = false;
+      }
 
       this.sendRaw(`NOTICE ${activeRoom.channel} :\x01RENEGALL ${participants.join(',')}\x01`);
       this.logHosting('SYSTEM', `Requested XNA V3 tunnel renegotiation for ${participants.join(', ')} in ${activeRoom.channel}.`, {
