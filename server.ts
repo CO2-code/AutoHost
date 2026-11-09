@@ -225,7 +225,8 @@ app.post('/api/rooms/chat', (req, res) => {
 app.post('/api/rooms/kick', (req, res) => {
   const { roomId, nick, reason } = req.body || {};
   try {
-    const room = cncnetBot.getRoom(roomId);
+    const bot = getBotForRoom(roomId);
+    const room = bot.getRoom(roomId);
     if (!room) throw new Error('Room not found');
     if (!nick) throw new Error('Nick is required');
     bot.sendRaw(`KICK ${room.channel} ${nick} :${reason || 'Removed by host'}`);
@@ -272,7 +273,7 @@ app.get('/api/logs/download/:type', (req, res) => {
   if (type !== 'hosting' && type !== 'activity') {
     return res.status(400).send('Invalid log type');
   }
-  const filePath = cncnetBot.getLogFilePath(type);
+  const filePath = allBots()[0].getLogFilePath(type);
   if (fs.existsSync(filePath)) {
     res.download(filePath, `cncnet_${type}_${new Date().toISOString().slice(0, 10)}.log`);
   } else {
