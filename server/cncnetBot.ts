@@ -1124,7 +1124,13 @@ export class CnCNetAutoHostBot {
     };
 
     room.players.push(player);
-    for (const roomPlayer of room.players) roomPlayer.tunnelNegotiationSuccesses = 0;
+    for (const roomPlayer of room.players) {
+      roomPlayer.tunnelNegotiationSuccesses = 0;
+      roomPlayer.tunnelNegotiationInProgress = 0;
+      roomPlayer.tunnelNegotiationFailures = 0;
+      roomPlayer.tunnelNegotiationReportedPeers = 0;
+      roomPlayer.tunnelNegotiationReportReceived = false;
+    }
     this.stats.totalPlayersServed++;
 
     this.logHosting('PLAYER_JOIN', `Player '${nick}' joined RA1 room ${room.channel} (Slot ${newSlot}/${room.maxPlayers})`, {
@@ -1206,7 +1212,13 @@ export class CnCNetAutoHostBot {
         clearTimeout(renegotiationTimer);
         this.roomTunnelRenegotiationTimers.delete(room.id);
       }
-      for (const roomPlayer of room.players) roomPlayer.tunnelNegotiationSuccesses = 0;
+      for (const roomPlayer of room.players) {
+        roomPlayer.tunnelNegotiationSuccesses = 0;
+        roomPlayer.tunnelNegotiationInProgress = 0;
+        roomPlayer.tunnelNegotiationFailures = 0;
+        roomPlayer.tunnelNegotiationReportedPeers = 0;
+        roomPlayer.tunnelNegotiationReportReceived = false;
+      }
       this.logHosting('PLAYER_PART', `Player '${nick}' left ${room.channel}`, {
         roomId: room.id,
         channel: room.channel,
@@ -1403,10 +1415,7 @@ export class CnCNetAutoHostBot {
       const participants = activeRoom.players.map((player) => player.nick);
       if (participants.length < 2) return;
       const requiredPeers = activeRoom.players.length - 1;
-      const allReported = activeRoom.players.every((player) =>
-        player.tunnelNegotiationReportReceived &&
-        player.tunnelNegotiationReportedPeers === requiredPeers
-      );
+      const allReported = activeRoom.players.every((player) => player.tunnelNegotiationReportReceived);
       const allSucceeded = allReported && activeRoom.players.every((player) =>
         player.tunnelNegotiationSuccesses === requiredPeers
       );
