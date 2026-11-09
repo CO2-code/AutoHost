@@ -468,7 +468,7 @@ export class CnCNetAutoHostBot {
     this.logHosting('SYSTEM', `Connected to CnCNet server! Registering nick '${this.currentNick}' for RA1...`);
 
     this.sendRaw(`NICK ${this.currentNick}`);
-    this.sendRaw(`USER RA 0 * :${this.config.realName}`);
+    this.sendRaw(`USER RA. 0 * :${this.config.realName}`);
   }
 
   // ======================== IRC LINE PARSER ========================
