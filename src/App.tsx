@@ -66,6 +66,7 @@ export interface RoomPlayer {
 
 export interface HostedRoom {
   id: string;
+  hostNick: string;
   gameType: 'RA';
   gameTitle: string;
   channel: string;
@@ -127,6 +128,7 @@ export default function App() {
   const [chatInput, setChatInput] = useState('');
 
   // Create Room Form state (GameLobbyBase.ini official options)
+  const [newRoomHostNick, setNewRoomHostNick] = useState('BOTPRO');
   const [newRoomTitle, setNewRoomTitle] = useState('[AUTO] 2v2');
   const [newRoomMaxPlayers, setNewRoomMaxPlayers] = useState(4);
   const [newRoomMap, setNewRoomMap] = useState('[2] Equal Opportunity');
@@ -290,6 +292,7 @@ export default function App() {
     setIsLoading(true);
     try {
       const payload = {
+        hostNick: newRoomHostNick,
         gameType: 'RA',
         gameTitle: newRoomTitle,
         maxPlayers: newRoomMaxPlayers,
@@ -442,7 +445,6 @@ export default function App() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          nick: configNick,
           server: configServer,
           port: configPort,
           useSsl: configUseSsl,
@@ -514,7 +516,7 @@ export default function App() {
               <p className="text-xs text-slate-400 flex flex-wrap items-center gap-2 font-mono">
                 <span>Announce Channel: <strong className="text-red-400">#cncnet-ra-games</strong></span>
                 <span>•</span>
-                <span>Bot: <strong className="text-slate-200">{status?.nick || configNick}</strong></span>
+                <span>Bots: <strong className="text-slate-200">{(status?.bots || []).map((bot: any) => bot.nick).join(' · ') || 'BOTPRO · BOTBegginer · BOT2v2'}</strong></span>
               </p>
             </div>
           </div>
@@ -789,7 +791,7 @@ Create your first IRC room. It will be advertised in #cncnet-ra-games.
                               </h4>
                             </div>
                             <p className="text-[11px] text-slate-400 font-mono mt-1">
-                              Channel: <span className="text-slate-200">{room.channel}</span>
+                              Host: <span className="text-red-300">{room.hostNick}</span> · Channel: <span className="text-slate-200">{room.channel}</span>
                             </p>
                           </div>
 
@@ -1498,6 +1500,19 @@ Create your first IRC room. It will be advertised in #cncnet-ra-games.
             </div>
 
             <form onSubmit={handleCreateRoom} className="space-y-4 text-xs">
+              <div>
+                <label className="block font-bold text-slate-300 mb-1">Hosting IRC Identity</label>
+                <select
+                  value={newRoomHostNick}
+                  onChange={(e) => setNewRoomHostNick(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-red-500 font-mono"
+                >
+                  {['BOTPRO', 'BOTBegginer', 'BOT2v2'].map((nick) => {
+                    const inUse = rooms.some((room) => room.hostNick === nick);
+                    return <option key={nick} value={nick} disabled={inUse}>{nick}{inUse ? ' — already hosting' : ''}</option>;
+                  })}
+                </select>
+              </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block font-bold text-slate-300 mb-1">Room Title</label>
@@ -1988,14 +2003,14 @@ Create your first IRC room. It will be advertised in #cncnet-ra-games.
             </div>
 
             <form onSubmit={handleSaveConfig} className="space-y-4 text-xs">
-              <div>
-                <label className="block font-bold text-slate-300 mb-1">Bot Nickname on CnCNet IRC</label>
-                <input
-                  type="text"
-                  value={configNick}
-                  onChange={(e) => setConfigNick(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-red-500"
-                />
+              <div className="rounded-lg border border-slate-800 bg-slate-950 p-3">
+                <label className="block font-bold text-slate-300 mb-2">IRC Hosting Identities</label>
+                <div className="flex flex-wrap gap-2 font-mono text-red-300">
+                  <span>BOTPRO</span>
+                  <span>BOTBegginer</span>
+                  <span>BOT2v2</span>
+                </div>
+                <p className="text-[10px] text-slate-500 mt-2">Each identity has its own IRC connection and can host one room at a time.</p>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
