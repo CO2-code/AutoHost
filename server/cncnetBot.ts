@@ -1148,9 +1148,9 @@ export class CnCNetAutoHostBot {
 
     this.sendRoomTopic(room);
     this.broadcastGameAnnouncement(room);
+    this.sendRoomPlayerOptions(room);
     this.sendRoomLobbySettings(room);
     this.sendRoomGameOptions(room);
-    this.sendRoomPlayerOptions(room);
     this.sendRoomPlayerExtraOptions(room);
     this.evaluateRoomAutomation(room);
     this.scheduleRoomTunnelRenegotiation(room);
