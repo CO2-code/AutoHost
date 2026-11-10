@@ -131,6 +131,7 @@ export default function App() {
   const [newRoomHostNick, setNewRoomHostNick] = useState('BOTPRO');
   const [newRoomTitle, setNewRoomTitle] = useState('[AUTO] 2v2');
   const [newRoomMaxPlayers, setNewRoomMaxPlayers] = useState(4);
+  const [newRoomSkillLevel, setNewRoomSkillLevel] = useState(0);
   const [newRoomMap, setNewRoomMap] = useState('[2] Equal Opportunity');
   const [newRoomPassword, setNewRoomPassword] = useState('');
   const [newRoomOptions, setNewRoomOptions] = useState<Ra1GameOptions>({ ...DEFAULT_RA1_OPTIONS });
@@ -294,6 +295,7 @@ export default function App() {
         gameType: 'RA',
         gameTitle: newRoomTitle,
         maxPlayers: newRoomMaxPlayers,
+        skillLevel: newRoomSkillLevel,
         currentMap: newRoomMap,
         mapPool: gameDef ? gameDef.defaultMaps : [newRoomMap],
         options: newRoomOptions,
@@ -1563,7 +1565,7 @@ Create your first IRC room. It will be advertised in #cncnet-ra-games.
               </div>
 
               {/* Primary Match Settings */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
                 <div>
                   <label className="block font-bold text-slate-300 mb-1">Max Players</label>
                   <select
@@ -1575,6 +1577,20 @@ Create your first IRC room. It will be advertised in #cncnet-ra-games.
                     <option value={4}>4 Players (2v2)</option>
                     <option value={6}>6 Players (3v3)</option>
                     <option value={8}>8 Players (FFA)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-300 mb-1">Game List Skill</label>
+                  <select
+                    value={newRoomSkillLevel}
+                    onChange={(e) => setNewRoomSkillLevel(Number(e.target.value))}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-red-500 font-mono"
+                  >
+                    <option value={0}>Any</option>
+                    <option value={1}>Beginner</option>
+                    <option value={2}>Intermediate</option>
+                    <option value={3}>Pro</option>
                   </select>
                 </div>
 
