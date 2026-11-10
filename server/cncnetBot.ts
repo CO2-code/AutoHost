@@ -1165,9 +1165,19 @@ export class CnCNetAutoHostBot {
     if (!room) throw new Error('Room not found');
 
     if (updates.gameTitle) room.gameTitle = updates.gameTitle;
-    if (updates.currentMap) {
+    if (updates.currentMap && updates.currentMap !== room.currentMap) {
+      room.recentMaps ||= [];
+      room.recentMaps.push(room.currentMap);
+      room.recentMaps = room.recentMaps.slice(-5);
       room.currentMap = updates.currentMap;
-      this.sendRoomMessage(room, `[MAP] Map changed to: ${room.currentMap}`);
+      room.mapVotes = {};
+      for (const player of room.players) player.isReady = false;
+      const readyTimer = this.roomReadyCountdownTimers.get(room.id);
+      if (readyTimer) {
+        clearTimeout(readyTimer);
+        this.roomReadyCountdownTimers.delete(room.id);
+      }
+      this.sendRoomMessage(room, `[MAP] Map changed to: ${room.currentMap}. Ready up again.`);
     }
     if (updates.maxPlayers) room.maxPlayers = updates.maxPlayers;
     if (updates.maxSpectators !== undefined) room.maxSpectators = Math.max(0, Math.min(4, Math.floor(Number(updates.maxSpectators) || 0)));
