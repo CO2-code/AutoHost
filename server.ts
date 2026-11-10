@@ -75,7 +75,7 @@ app.get('/api/status', (req, res) => {
       nick: configs[0].nick,
       bots: statuses,
       rooms: statuses.flatMap((status) => status.rooms),
-      lobbyUserCount: Math.max(...statuses.map((status) => status.lobbyUserCount || 0)),
+      lobbyUserCount: Math.max(0, ...statuses.map((status) => status.lobbyUserCount || 0)),
       stats: {
         totalRoomsCreated: statuses.reduce((sum, status) => sum + status.stats.totalRoomsCreated, 0),
         totalPlayersServed: statuses.reduce((sum, status) => sum + status.stats.totalPlayersServed, 0),
