@@ -1627,6 +1627,10 @@ export class CnCNetAutoHostBot {
   private sendRoomGameOptions(room: HostedRoom) {
     const packedOptions = packRa1GameOptions(room.options);
     const mapSha1 = this.getMapSha1(room.currentMap);
+    if (!mapSha1) {
+      this.logHosting('ERROR', `GO update skipped: no valid SHA-1 configured for map '${room.currentMap}'.`);
+      return;
+    }
     const gameMode = KNOWN_MAP_SHA1S[room.currentMap] ? 'Popular' : (process.env.CNCNET_RA1_GAME_MODE?.trim() || 'Standard');
     const frameSendRate = '7';
     const maxAhead = process.env.CNCNET_RA1_MAX_AHEAD?.trim() || '0';
