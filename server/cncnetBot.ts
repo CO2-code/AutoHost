@@ -123,6 +123,8 @@ export interface HostedRoom {
   capacity?: number;
   skillLevel?: number;
   forceRandomSides?: boolean;
+  forceRandomColors?: boolean;
+  forceNoTeams?: boolean;
   forceRandomStarts?: boolean;
   currentMap: string;
   mapPool: string[];
@@ -1501,7 +1503,7 @@ export class CnCNetAutoHostBot {
 
   private validateRoomTeams(room: HostedRoom, announce = true): boolean {
     const humans = room.players.filter((player) => !this.isSpectator(player));
-    if (!this.requireBalancedTeams || humans.length < 4 || humans.length % 2 !== 0) return true;
+    if (room.forceNoTeams || !this.requireBalancedTeams || humans.length < 4 || humans.length % 2 !== 0) return true;
     const teamCounts = new Map<number, number>();
     for (const player of humans) {
       const team = player.teamId || 0;
@@ -1607,8 +1609,10 @@ export class CnCNetAutoHostBot {
 
   private sendRoomPlayerExtraOptions(room: HostedRoom) {
     const randomSides = room.forceRandomSides ? '1' : '0';
+    const randomColors = room.forceRandomColors ? '1' : '0';
+    const noTeams = room.forceNoTeams ? '1' : '0';
     const randomStarts = room.forceRandomStarts ? '1' : '0';
-    this.sendQueued(`NOTICE ${room.channel} :\x01PEO ${randomSides}00${randomStarts}0;\x01`, `PEO:${room.channel.toLowerCase()}`, 11);
+    this.sendQueued(`NOTICE ${room.channel} :\x01PEO ${randomSides}${randomColors}${noTeams}${randomStarts}0;\x01`, `PEO:${room.channel.toLowerCase()}`, 11);
   }
 
   private sendRoomPlayerOptions(room: HostedRoom) {
@@ -1976,9 +1980,9 @@ export class CnCNetAutoHostBot {
       if (!Number.isSafeInteger(packed)) return;
       const requestedSideId = packed & 0xff;
       const nextSideId = room.forceRandomSides && requestedSideId !== this.spectatorSideId ? 0 : requestedSideId;
-      const nextColorId = (packed >>> 8) & 0xff;
+      const nextColorId = room.forceRandomColors ? 0 : (packed >>> 8) & 0xff;
       const nextStartingLocation = room.forceRandomStarts ? 0 : (packed >>> 16) & 0xff;
-      const nextTeamId = (packed >>> 24) & 0xff;
+      const nextTeamId = room.forceNoTeams ? 0 : (packed >>> 24) & 0xff;
       const previousSideId = player.sideId || 0;
       const previousStartingLocation = player.startingLocation || 0;
       const previousTeamId = player.teamId || 0;
@@ -2648,13 +2652,19 @@ export class CnCNetAutoHostBot {
 
   private applyRoomPlayerExtraOptionChange(
     room: HostedRoom,
-    option: 'randomSides' | 'randomStarts',
+    option: 'randomSides' | 'randomColors' | 'noTeams' | 'randomStarts',
     enabled: boolean,
     message: string,
   ) {
     if (option === 'randomSides') {
       room.forceRandomSides = enabled;
       if (enabled) for (const player of room.players) player.sideId = 0;
+    } else if (option === 'randomColors') {
+      room.forceRandomColors = enabled;
+      if (enabled) for (const player of room.players) player.colorId = 0;
+    } else if (option === 'noTeams') {
+      room.forceNoTeams = enabled;
+      if (enabled) for (const player of room.players) player.teamId = 0;
     } else {
       room.forceRandomStarts = enabled;
       if (enabled) for (const player of room.players) player.startingLocation = 0;
@@ -2711,6 +2721,18 @@ export class CnCNetAutoHostBot {
       scope = 'peo:randomSides';
       voteKey = `${scope}:${targetValue}`;
       description = `Random sides ${targetValue ? 'on' : 'off'}`;
+    } else if (query === 'colors' || query === 'randomcolors') {
+      extraOption = 'randomColors';
+      const targetValue = !room.forceRandomColors;
+      scope = 'peo:randomColors';
+      voteKey = `${scope}:${targetValue}`;
+      description = `Random colors ${targetValue ? 'on' : 'off'}`;
+    } else if (query === 'noteams' || query === 'no-teams') {
+      extraOption = 'noTeams';
+      const targetValue = !room.forceNoTeams;
+      scope = 'peo:noTeams';
+      voteKey = `${scope}:${targetValue}`;
+      description = `No teams ${targetValue ? 'on' : 'off'}`;
     } else if (query === 'spots' || query === 'starts' || query === 'randomstarts') {
       extraOption = 'randomStarts';
       const targetValue = !room.forceRandomStarts;
@@ -2741,7 +2763,7 @@ export class CnCNetAutoHostBot {
       const requestedValue = parts.slice(1).join(' ').trim();
       const targetValue = dropdown?.options.find((value) => String(value).toLowerCase() === requestedValue.toLowerCase());
       if (!dropdown || !requestedValue || targetValue === undefined) {
-        this.sendRoomMessage(room, '[VOTE] Use a checkbox name, sides, spots, or game/tech/credits/units/speed followed by a valid value.');
+        this.sendRoomMessage(room, '[VOTE] Use a checkbox name, sides, colors, noteams, spots, or game/tech/credits/units/speed followed by a valid value.');
         return;
       }
       scope = `dropdown:${dropdownKey}`;
