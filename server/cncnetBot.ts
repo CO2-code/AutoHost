@@ -474,20 +474,13 @@ export class CnCNetAutoHostBot {
   private sendQueued(command: string, key?: string, priority = 10) {
     if (key) {
       const existingIndex = this.sendQueue.findIndex((item) => item.key === key);
-      if (existingIndex >= 0) {
-        this.sendQueue[existingIndex].command = command;
-      } else {
-        const item = { command, key, priority };
-        const insertIndex = this.sendQueue.findIndex((queued) => queued.priority > priority);
-        if (insertIndex < 0) this.sendQueue.push(item);
-        else this.sendQueue.splice(insertIndex, 0, item);
-      }
-    } else {
-      const item = { command, priority };
-      const insertIndex = this.sendQueue.findIndex((queued) => queued.priority > priority);
-      if (insertIndex < 0) this.sendQueue.push(item);
-      else this.sendQueue.splice(insertIndex, 0, item);
+      if (existingIndex >= 0) this.sendQueue.splice(existingIndex, 1);
     }
+
+    const item = key ? { command, key, priority } : { command, priority };
+    const insertIndex = this.sendQueue.findIndex((queued) => queued.priority > priority);
+    if (insertIndex < 0) this.sendQueue.push(item);
+    else this.sendQueue.splice(insertIndex, 0, item);
 
     if (!this.sendTimer) {
       this.sendTimer = setTimeout(() => this.processSendQueue(), this.sendIntervalMs);
