@@ -1196,6 +1196,7 @@ export class CnCNetAutoHostBot {
     };
 
     room.players.push(player);
+    room.tunnelLaunchBlocked = false;
     for (const roomPlayer of room.players) {
       roomPlayer.tunnelNegotiationSuccesses = 0;
       roomPlayer.tunnelNegotiationInProgress = 0;
@@ -1279,6 +1280,7 @@ export class CnCNetAutoHostBot {
     });
 
     if (room.players.length !== initialLen) {
+      room.tunnelLaunchBlocked = false;
       const renegotiationTimer = this.roomTunnelRenegotiationTimers.get(room.id);
       if (renegotiationTimer) {
         clearTimeout(renegotiationTimer);
