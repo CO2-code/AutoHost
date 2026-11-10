@@ -1740,6 +1740,13 @@ export class CnCNetAutoHostBot {
 
     room.players.push(player);
     room.fullCountdownShown = false;
+    room.mapVotes = {};
+    room.optionVotes = {};
+    room.kickVotes = {};
+    for (const roomPlayer of room.players) {
+      roomPlayer.votedMap = undefined;
+      roomPlayer.wantsNextMap = false;
+    }
     room.fileHashLaunchBlocked = false;
     room.fileHashMismatchReported = undefined;
     room.lastActivityAt = new Date().toISOString();
@@ -1839,6 +1846,13 @@ export class CnCNetAutoHostBot {
 
     if (room.players.length !== initialLen) {
       room.fullCountdownShown = false;
+      room.mapVotes = {};
+      room.optionVotes = {};
+      room.kickVotes = {};
+      for (const roomPlayer of room.players) {
+        roomPlayer.votedMap = undefined;
+        roomPlayer.wantsNextMap = false;
+      }
       room.lastActivityAt = new Date().toISOString();
       room.tunnelLaunchBlocked = false;
       const renegotiationTimer = this.roomTunnelRenegotiationTimers.get(room.id);
