@@ -1376,6 +1376,7 @@ export class CnCNetAutoHostBot {
     this.sendRoomLobbySettings(room);
     this.sendRoomGameOptions(room);
     this.broadcastGameAnnouncement(room);
+    this.evaluateRoomAutomation(room);
   }
 
   public setRoomLocked(roomId: string, locked: boolean): HostedRoom {
