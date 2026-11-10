@@ -118,6 +118,7 @@ export interface HostedRoom {
   configuredMaxPlayers?: number;
   autoThreeVsThreeActive?: boolean;
   maxSpectators?: number;
+  spectatorSideId?: number;
   humanPlayerCount?: number;
   spectatorCount?: number;
   capacity?: number;
@@ -399,6 +400,7 @@ export class CnCNetAutoHostBot {
       const humanPlayerCount = this.getHumanPlayerCount(room);
       return {
         ...room,
+        spectatorSideId: this.spectatorSideId,
         autoThreeVsThreeActive: (room.configuredMaxPlayers ?? room.maxPlayers) === 4 && room.maxPlayers === 6,
         humanPlayerCount,
         spectatorCount: room.players.length - humanPlayerCount,
