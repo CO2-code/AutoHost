@@ -1302,7 +1302,7 @@ export class CnCNetAutoHostBot {
     if (!room) throw new Error('Room not found');
     if (this.state !== 'REGISTERED') throw new Error('Bot must be connected to CnCNet IRC before launching a room.');
     if (!room.isLocked) throw new Error('Lock the room before launching it.');
-    if (room.status === 'PLAYING') throw new Error('This room has already been launched.');
+    if (room.status === 'PLAYING' || room.players.some((player) => player.isInGame)) throw new Error('This room has already been launched.');
     const aiFallback = room.aiLevel !== undefined && room.skillLevel === 1 && room.maxPlayers === 2 && room.players.length === 1;
     if (!aiFallback && this.getHumanPlayerCount(room) !== room.maxPlayers) {
       throw new Error(`Room needs ${room.maxPlayers} human players before launch.`);
@@ -2007,7 +2007,7 @@ export class CnCNetAutoHostBot {
   }
 
   private evaluateRoomAutomation(room: HostedRoom) {
-    if (room.status === 'PLAYING') return;
+    if (room.status === 'PLAYING' || room.players.some((player) => player.isInGame)) return;
 
     const soloAiTimer = this.roomSoloAiTimers.get(room.id);
     if (room.skillLevel !== 1 || room.maxPlayers !== 2 || room.players.length !== 1 || room.aiLevel !== undefined) {
@@ -2137,7 +2137,7 @@ export class CnCNetAutoHostBot {
     const timer = setTimeout(() => {
       this.roomReadyCountdownTimers.delete(room.id);
       const activeRoom = this.rooms.get(room.id);
-      if (!activeRoom || activeRoom.status === 'PLAYING') return;
+      if (!activeRoom || activeRoom.status === 'PLAYING' || activeRoom.players.some((player) => player.isInGame)) return;
       if (
         (activeRoom.aiLevel !== undefined
           ? activeRoom.skillLevel !== 1 || activeRoom.maxPlayers !== 2 || activeRoom.players.length !== 1 || !activeRoom.players.every((player) => player.isReady)
