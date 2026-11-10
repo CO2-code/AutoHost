@@ -2723,7 +2723,7 @@ export class CnCNetAutoHostBot {
     let voteKey: string;
     let change: Partial<Ra1GameOptions> = {};
     let description: string;
-    let extraOption: 'randomSides' | 'randomStarts' | undefined;
+    let extraOption: 'randomSides' | 'randomColors' | 'randomStarts' | undefined;
 
     if (query === 'sides' || query === 'randomsides') {
       extraOption = 'randomSides';
