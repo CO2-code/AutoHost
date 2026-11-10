@@ -109,6 +109,7 @@ export interface HostedRoom {
   lobbyChannel: string;
   password?: string;
   maxPlayers: number;
+  skillLevel?: number;
   currentMap: string;
   mapPool: string[];
   options: Ra1GameOptions;
@@ -838,6 +839,7 @@ export class CnCNetAutoHostBot {
       lobbyChannel: RA1_DEFINITION.lobbyChannel,
       password: options.password || undefined,
       maxPlayers: options.maxPlayers || RA1_DEFINITION.defaultMaxPlayers,
+      skillLevel: Math.max(0, Math.min(3, Number(options.skillLevel) || 0)),
       currentMap: options.currentMap || RA1_DEFINITION.defaultMaps[0],
       mapPool: options.mapPool && options.mapPool.length > 0 ? options.mapPool : [...RA1_DEFINITION.defaultMaps],
       options: roomOptions,
@@ -924,6 +926,7 @@ export class CnCNetAutoHostBot {
       this.sendRoomMessage(room, `[MAP] Map changed to: ${room.currentMap}`);
     }
     if (updates.maxPlayers) room.maxPlayers = updates.maxPlayers;
+    if (updates.skillLevel !== undefined) room.skillLevel = Math.max(0, Math.min(3, Number(updates.skillLevel) || 0));
     if (updates.password !== undefined) room.password = updates.password || undefined;
 
     if (updates.options) {
@@ -941,9 +944,9 @@ export class CnCNetAutoHostBot {
 
     room.lastActivityAt = new Date().toISOString();
     this.sendRoomTopic(room);
-    this.broadcastGameAnnouncement(room);
-
+    this.sendRoomLobbySettings(room);
     this.sendRoomGameOptions(room);
+    this.broadcastGameAnnouncement(room);
   }
 
   public setRoomLocked(roomId: string, locked: boolean): HostedRoom {
@@ -1021,7 +1024,7 @@ export class CnCNetAutoHostBot {
   }
 
   private sendRoomLobbySettings(room: HostedRoom) {
-    const skillLevel = Math.max(0, Math.min(3, Number.parseInt(process.env.CNCNET_RA1_SKILL || '0', 10) || 0));
+    const skillLevel = Math.max(0, Math.min(3, room.skillLevel ?? 0));
     const passwordFlag = room.password ? 1 : 0;
     this.sendQueued(`NOTICE ${room.channel} :\x01GSETTINGS ${room.gameTitle};${room.maxPlayers};${skillLevel};${passwordFlag}\x01`, `GSETTINGS:${room.channel.toLowerCase()}`, 11);
   }
@@ -1106,7 +1109,7 @@ export class CnCNetAutoHostBot {
     const tunnel = '[DYN]';
     const mapName = configuredMapName || room.currentMap;
     const gameMode = KNOWN_MAP_SHA1S[room.currentMap] ? 'Popular' : (process.env.CNCNET_RA1_GAME_MODE?.trim() || 'Standard');
-    const skill = process.env.CNCNET_RA1_SKILL || '0';
+    const skill = String(Math.max(0, Math.min(3, room.skillLevel ?? 0)));
     const gameOptions = packRa1GameOptions(room.options);
     const difficulty = process.env.CNCNET_RA1_DIFFICULTY || '-1';
     const protocolRevision = process.env.CNCNET_PROTOCOL_REVISION?.trim() || 'A';
