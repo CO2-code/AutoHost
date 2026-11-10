@@ -1341,7 +1341,13 @@ export class CnCNetAutoHostBot {
       room.mapVotes = {};
       room.forceRandomStarts = false;
       room.fullCountdownShown = false;
-      for (const player of room.players) player.isReady = false;
+      for (const player of room.players) {
+        player.isReady = false;
+        player.unreadySince = Date.now();
+        player.readyWarnedAt = undefined;
+        player.votedMap = undefined;
+        player.wantsNextMap = false;
+      }
       this.sendRoomPlayerExtraOptions(room);
       const readyTimer = this.roomReadyCountdownTimers.get(room.id);
       if (readyTimer) {
@@ -2521,6 +2527,8 @@ export class CnCNetAutoHostBot {
       player.votedMap = undefined;
       player.wantsNextMap = false;
       player.isReady = false;
+      player.unreadySince = Date.now();
+      player.readyWarnedAt = undefined;
     }
     const readyTimer = this.roomReadyCountdownTimers.get(room.id);
     if (readyTimer) {
