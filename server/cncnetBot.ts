@@ -948,6 +948,15 @@ export class CnCNetAutoHostBot {
         this.lobbyNamesDepartures.delete(oldKey);
         this.lobbyNamesDepartures.add(newKey);
       }
+      for (const snapshot of this.roomNamesSnapshots.values()) {
+        if (snapshot.has(oldKey)) {
+          snapshot.delete(oldKey);
+          snapshot.set(newKey, newNick);
+        }
+      }
+      for (const departures of this.roomNamesDepartures.values()) {
+        if (departures.delete(oldKey)) departures.add(newKey);
+      }
       for (const room of this.rooms.values()) {
         const player = room.players.find((candidate) => candidate.nick.toLowerCase() === oldKey);
         if (!player) continue;
@@ -966,10 +975,6 @@ export class CnCNetAutoHostBot {
         if (kickTargetVotes && room.kickVotes) {
           room.kickVotes[newKey] = kickTargetVotes;
           delete room.kickVotes[oldKey];
-        }
-        if (room.currentMatchId) {
-          const match = this.matchHistory.find((entry) => entry.id === room.currentMatchId);
-          if (match) match.players = match.players.map((nick) => nick.toLowerCase() === oldKey ? newNick : nick);
         }
         if (room.status !== 'PLAYING') {
           const renegotiationTimer = this.roomTunnelRenegotiationTimers.get(room.id);
