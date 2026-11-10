@@ -155,6 +155,7 @@ export default function App() {
   const [newRoomHostNick, setNewRoomHostNick] = useState('BOTPRO');
   const [newRoomTitle, setNewRoomTitle] = useState('[AUTO] 2v2');
   const [newRoomMaxPlayers, setNewRoomMaxPlayers] = useState(4);
+  const [newRoomMaxSpectators, setNewRoomMaxSpectators] = useState(2);
   const [newRoomSkillLevel, setNewRoomSkillLevel] = useState(0);
   const [newRoomMap, setNewRoomMap] = useState('[2] Equal Opportunity');
   const [newRoomPassword, setNewRoomPassword] = useState('');
@@ -333,6 +334,7 @@ export default function App() {
         gameType: 'RA',
         gameTitle: newRoomTitle,
         maxPlayers: newRoomMaxPlayers,
+        maxSpectators: newRoomMaxSpectators,
         skillLevel: newRoomSkillLevel,
         currentMap: newRoomMap,
         mapPool: gameDef ? gameDef.defaultMaps : [newRoomMap],
@@ -950,7 +952,7 @@ Create your first IRC room. It will be advertised in #cncnet-ra-games.
 
                     {/* Live Options Summary from GameLobbyBase.ini */}
                     <div className="bg-slate-950/80 p-3.5 rounded-xl border border-slate-800 flex flex-col gap-3">
-                      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                      <div className="grid grid-cols-2 sm:grid-cols-6 gap-3">
                         <div className="bg-slate-900/80 p-2.5 rounded-lg border border-slate-800/80">
                           <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider block">Game Mode</span>
                           <span className="text-xs font-bold text-white block mt-0.5">
@@ -1671,6 +1673,21 @@ Create your first IRC room. It will be advertised in #cncnet-ra-games.
                     <option value={4}>4 Players (2v2)</option>
                     <option value={6}>6 Players (3v3)</option>
                     <option value={8}>8 Players (FFA)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-300 mb-1">Spectator Slots</label>
+                  <select
+                    value={newRoomMaxSpectators}
+                    onChange={(e) => setNewRoomMaxSpectators(Number(e.target.value))}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-red-500 font-mono"
+                  >
+                    <option value={0}>None</option>
+                    <option value={1}>1 Spectator</option>
+                    <option value={2}>2 Spectators</option>
+                    <option value={3}>3 Spectators</option>
+                    <option value={4}>4 Spectators</option>
                   </select>
                 </div>
 
