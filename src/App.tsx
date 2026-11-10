@@ -121,14 +121,28 @@ export interface ChatMessageEntry {
   isBot: boolean;
 }
 
+export interface MatchHistoryEntry {
+  id: string;
+  roomId: string;
+  channel: string;
+  gameTitle: string;
+  map: string;
+  players: string[];
+  gameId: number;
+  startedAt: string;
+  endedAt?: string;
+  endReason?: string;
+}
+
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'rooms' | 'chat' | 'create' | 'logs' | 'simulator' | 'settings'>('rooms');
+  const [activeTab, setActiveTab] = useState<'rooms' | 'matches' | 'chat' | 'create' | 'logs' | 'simulator' | 'settings'>('rooms');
   const [status, setStatus] = useState<any>(null);
   const [rooms, setRooms] = useState<HostedRoom[]>([]);
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
   const [gameDef, setGameDef] = useState<GameDefinition | null>(null);
   const [hostingLogs, setHostingLogs] = useState<HostingLogEntry[]>([]);
   const [chatLogs, setChatLogs] = useState<ChatMessageEntry[]>([]);
+  const [matchHistory, setMatchHistory] = useState<MatchHistoryEntry[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
   // Chat message
@@ -206,6 +220,18 @@ export default function App() {
     }
   };
 
+  const fetchMatches = async () => {
+    try {
+      const res = await fetch('/api/matches?limit=100');
+      if (res.ok) {
+        const data = await res.json();
+        setMatchHistory(data.matches || []);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   const fetchChat = async () => {
     try {
       const selectedRoom = rooms.find((r) => r.id === selectedRoomId);
@@ -239,11 +265,13 @@ export default function App() {
     fetchStatus();
     fetchLogs();
     fetchChat();
+    fetchMatches();
 
     const interval = setInterval(() => {
       fetchStatus();
       if (activeTab === 'chat') fetchChat();
       if (activeTab === 'logs') fetchLogs();
+      if (activeTab === 'matches') fetchMatches();
     }, 2500);
 
     return () => clearInterval(interval);
@@ -683,6 +711,18 @@ Announces IRC room listings in #cncnet-ra-games. The game-list channel is public
           >
             <Gamepad2 className="w-4 h-4" />
             Active RA1 Rooms ({rooms.length})
+          </button>
+
+          <button
+            onClick={() => setActiveTab('matches')}
+            className={`px-4 py-2.5 text-xs font-bold rounded-t-lg flex items-center gap-2 border-b-2 cursor-pointer transition-all whitespace-nowrap ${
+              activeTab === 'matches'
+                ? 'border-red-600 text-red-400 bg-slate-900'
+                : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-900/50'
+            }`}
+          >
+            <Activity className="w-4 h-4" />
+            Match History ({matchHistory.length})
           </button>
 
           <button
@@ -1361,6 +1401,39 @@ Create your first IRC room. It will be advertised in #cncnet-ra-games.
                     </div>
                   </div>
                 )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === 'matches' && (
+          <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-xl flex flex-col gap-4">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div>
+                <h3 className="font-bold text-sm text-white">RA1 Match History</h3>
+                <p className="text-xs text-slate-400">Persisted in logs/matches.jsonl</p>
+              </div>
+              <button onClick={fetchMatches} className="text-slate-400 hover:text-white text-xs flex items-center gap-1 cursor-pointer">
+                <RefreshCw className="w-3.5 h-3.5" /> Refresh
+              </button>
+            </div>
+            {matchHistory.length === 0 ? (
+              <div className="text-center text-sm text-slate-500 py-10">No matches recorded yet.</div>
+            ) : (
+              <div className="flex flex-col gap-2">
+                {matchHistory.map((match) => (
+                  <div key={match.id} className="border border-slate-800 rounded-lg p-3 bg-slate-950/40">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="font-bold text-sm text-white">{match.map}</div>
+                      <span className={`text-[10px] uppercase font-bold px-2 py-1 rounded ${match.endedAt ? 'text-slate-400 bg-slate-800' : 'text-emerald-300 bg-emerald-950'}`}>
+                        {match.endedAt ? match.endReason || 'Ended' : 'In progress'}
+                      </span>
+                    </div>
+                    <div className="text-xs text-slate-400 mt-1">{match.gameTitle} · {match.channel}</div>
+                    <div className="text-xs text-slate-300 mt-2">{match.players.join(', ')}</div>
+                    <div className="text-[10px] text-slate-500 mt-2">Started: {new Date(match.startedAt).toLocaleString()}{match.endedAt ? ` · Ended: ${new Date(match.endedAt).toLocaleString()}` : ''}</div>
+                  </div>
+                ))}
               </div>
             )}
           </div>
