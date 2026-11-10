@@ -128,6 +128,8 @@ export interface MatchHistoryEntry {
   gameTitle: string;
   map: string;
   players: string[];
+  spectators?: string[];
+  endPlayers?: string[];
   gameId: number;
   startedAt: string;
   endedAt?: string;
@@ -1431,6 +1433,8 @@ Create your first IRC room. It will be advertised in #cncnet-ra-games.
                     </div>
                     <div className="text-xs text-slate-400 mt-1">{match.gameTitle} · {match.channel}</div>
                     <div className="text-xs text-slate-300 mt-2">{match.players.join(', ')}</div>
+                    {match.spectators && match.spectators.length > 0 && <div className="text-[10px] text-cyan-300 mt-1">Spectators: {match.spectators.join(', ')}</div>}
+                    {match.endPlayers && match.endPlayers.length > 0 && <div className="text-[10px] text-slate-500 mt-1">Still in game when the room closed: {match.endPlayers.join(', ')}</div>}
                     <div className="text-[10px] text-slate-500 mt-2">Started: {new Date(match.startedAt).toLocaleString()}{match.endedAt ? ` · Ended: ${new Date(match.endedAt).toLocaleString()}` : ''}</div>
                   </div>
                 ))}
