@@ -134,6 +134,7 @@ export interface HostedRoom {
   players: RoomPlayer[];
   mapVotes: Record<string, number>;
   kickVotes?: Record<string, string[]>;
+  optionVotes?: Record<string, string[]>;
   createdAt: string;
   lastActivityAt: string;
   launchedAt?: string;
@@ -250,6 +251,9 @@ export class CnCNetAutoHostBot {
   private readonly voteKickBanMs = Number.isFinite(Number(process.env.CNCNET_RA1_VOTEKICK_BAN_HOURS))
     ? Math.max(0, Number(process.env.CNCNET_RA1_VOTEKICK_BAN_HOURS)) * 3600000
     : 86400000;
+  private readonly votesNeeded = Number.isFinite(Number(process.env.CNCNET_RA1_VOTES_NEEDED))
+    ? Math.max(1, Math.floor(Number(process.env.CNCNET_RA1_VOTES_NEEDED)))
+    : 2;
 
   // Logs and Chat History
   private hostingLogs: HostingLogEntry[] = [];
@@ -1006,6 +1010,7 @@ export class CnCNetAutoHostBot {
       players: [],
       mapVotes: {},
       kickVotes: {},
+      optionVotes: {},
       createdAt: new Date().toISOString(),
       lastActivityAt: new Date().toISOString(),
     };
@@ -1993,6 +1998,105 @@ export class CnCNetAutoHostBot {
     this.evaluateRoomAutomation(room);
   }
 
+  private applyRoomOptionChange(room: HostedRoom, options: Partial<Ra1GameOptions>, message: string) {
+    room.options = { ...room.options, ...options, noTeslaZapEffectDelay: true };
+    room.bases = room.options.bases;
+    room.oreRegenerates = room.options.oreRegenerates;
+    room.crates = room.options.crates;
+    room.startingCredits = room.options.credits;
+    room.gameSpeed = room.options.gameSpeed;
+    for (const player of room.players) {
+      player.isReady = false;
+      player.unreadySince = Date.now();
+      player.readyWarnedAt = undefined;
+    }
+    const readyTimer = this.roomReadyCountdownTimers.get(room.id);
+    if (readyTimer) {
+      clearTimeout(readyTimer);
+      this.roomReadyCountdownTimers.delete(room.id);
+    }
+    room.optionVotes = {};
+    this.sendRoomMessage(room, message);
+    this.sendRoomGameOptions(room);
+    this.sendRoomPlayerOptions(room);
+    this.broadcastGameAnnouncement(room);
+    this.evaluateRoomAutomation(room);
+  }
+
+  private handleOptionVote(room: HostedRoom, player: RoomPlayer, argument: string) {
+    if (room.status === 'PLAYING') {
+      this.sendRoomMessage(room, '[VOTE] Lobby option voting is only available before launch.');
+      return;
+    }
+    const parts = argument.trim().split(/\s+/);
+    const query = (parts[0] || '').toLowerCase();
+    if (!query) {
+      this.sendRoomMessage(room, '[VOTE] Usage: !voteoption <checkbox> or !voteoption <dropdown> <value>.');
+      return;
+    }
+
+    const checkbox = RA1_CHECKBOX_DEFINITIONS.find((definition) =>
+      definition.key.toLowerCase() === query ||
+      definition.label.toLowerCase() === argument.trim().toLowerCase() ||
+      definition.iniSection.toLowerCase() === query
+    );
+    let scope: string;
+    let voteKey: string;
+    let change: Partial<Ra1GameOptions>;
+    let description: string;
+
+    if (checkbox) {
+      if (checkbox.locked) {
+        this.sendRoomMessage(room, `[VOTE] ${checkbox.label} is locked by the RA1 client.`);
+        return;
+      }
+      const targetValue = !room.options[checkbox.key];
+      scope = `checkbox:${checkbox.key}`;
+      voteKey = `${scope}:${targetValue}`;
+      change = { [checkbox.key]: targetValue } as Partial<Ra1GameOptions>;
+      description = `${checkbox.label} ${targetValue ? 'on' : 'off'}`;
+    } else {
+      const aliases: Record<string, string> = {
+        game: 'gameType',
+        tech: 'techLevel',
+        credit: 'credits',
+        units: 'unitCount',
+        speed: 'gameSpeed',
+      };
+      const dropdownKey = aliases[query] || query;
+      const dropdowns = RA1_DROPDOWNS as unknown as Record<string, { label: string; options: readonly (string | number)[] }>;
+      const dropdown = dropdowns[dropdownKey];
+      const requestedValue = parts.slice(1).join(' ').trim();
+      const targetValue = dropdown?.options.find((value) => String(value).toLowerCase() === requestedValue.toLowerCase());
+      if (!dropdown || !requestedValue || targetValue === undefined) {
+        this.sendRoomMessage(room, '[VOTE] Use a checkbox name, or game/tech/credits/units/speed followed by a valid value.');
+        return;
+      }
+      scope = `dropdown:${dropdownKey}`;
+      voteKey = `${scope}:${targetValue}`;
+      change = { [dropdownKey]: targetValue } as Partial<Ra1GameOptions>;
+      description = `${dropdown.label}: ${targetValue}`;
+    }
+
+    room.optionVotes ||= {};
+    for (const [key, voters] of Object.entries(room.optionVotes)) {
+      if (!key.startsWith(`${scope}:`)) continue;
+      room.optionVotes[key] = voters.filter((nick) => nick.toLowerCase() !== player.nick.toLowerCase());
+      if (room.optionVotes[key].length === 0) delete room.optionVotes[key];
+    }
+    room.optionVotes[voteKey] ||= [];
+    room.optionVotes[voteKey].push(player.nick);
+    const votes = room.optionVotes[voteKey].filter((nick) =>
+      room.players.some((candidate) => candidate.nick.toLowerCase() === nick.toLowerCase())
+    ).length;
+    const needed = Math.min(this.votesNeeded, room.players.length);
+    if (votes < needed) {
+      this.sendRoomMessage(room, `[VOTE] ${player.nick} votes for ${description} (${votes}/${needed}). Type !voteoption again to agree.`);
+      return;
+    }
+    this.applyRoomOptionChange(room, change, `[VOTE] Passed! ${description}. Players must ready up again.`);
+  }
+
   private handlePlayerCommand(room: HostedRoom, senderNick: string, rawText: string) {
     const text = stripIrcFormatting(rawText);
     const parts = text.split(/\s+/);
@@ -2108,6 +2212,12 @@ export class CnCNetAutoHostBot {
         break;
       }
 
+      case '!voteoption':
+      case '!option': {
+        this.handleOptionVote(room, player, arg);
+        break;
+      }
+
       case '!invite': {
         const targetNick = arg.trim().replace(/^[@+]/, '');
         if (!targetNick || targetNick.toLowerCase() === this.currentNick.toLowerCase()) {
@@ -2187,7 +2297,7 @@ export class CnCNetAutoHostBot {
       case '!help':
       case '!commands':
       case '!h': {
-        this.sendRoomMessage(room, `[RA1 COMMANDS] !maps, !vote <map>, !mappick <map>, !next, !invite <nick>, !votekick <nick>, !status, !roll, !help`);
+        this.sendRoomMessage(room, `[RA1 COMMANDS] !maps, !vote <map>, !mappick <map>, !next, !voteoption <option>, !invite <nick>, !votekick <nick>, !status, !roll, !help`);
         break;
       }
     }
