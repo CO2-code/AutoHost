@@ -1359,7 +1359,7 @@ export class CnCNetAutoHostBot {
         details: reason,
       });
 
-      this.sendRoomMessage(room, `[LOBBY] ${nick} departed (${room.players.length}/${room.maxPlayers} remaining).`);
+      this.sendRoomMessage(room, `[LOBBY] ${nick} departed (${this.getHumanPlayerCount(room)}/${room.maxPlayers} players, ${room.players.length - this.getHumanPlayerCount(room)} spectators remaining).`);
 
       this.sendRoomTopic(room);
       this.broadcastGameAnnouncement(room);
@@ -1439,6 +1439,7 @@ export class CnCNetAutoHostBot {
       const packed = Number.parseInt(match[1], 10);
       if (!Number.isSafeInteger(packed)) return;
       const nextSideId = packed & 0xff;
+      const previousSideId = player.sideId || 0;
       if (nextSideId === this.spectatorSideId) {
         const currentSpectators = room.players.filter((roomPlayer) => roomPlayer !== player && this.isSpectator(roomPlayer)).length;
         if (currentSpectators >= (room.maxSpectators ?? this.defaultMaxSpectators)) {
@@ -1453,6 +1454,13 @@ export class CnCNetAutoHostBot {
       player.colorId = (packed >>> 8) & 0xff;
       player.startingLocation = (packed >>> 16) & 0xff;
       player.teamId = (packed >>> 24) & 0xff;
+      if (previousSideId !== nextSideId) {
+        for (const roomPlayer of room.players) {
+          roomPlayer.isReady = false;
+          roomPlayer.unreadySince = Date.now();
+          roomPlayer.readyWarnedAt = undefined;
+        }
+      }
       this.sendRoomPlayerOptions(room);
       this.broadcastGameAnnouncement(room);
       this.evaluateRoomAutomation(room);
@@ -1971,7 +1979,7 @@ export class CnCNetAutoHostBot {
       case '!status':
       case '!info': {
         const readyList = room.players.map((p) => `${p.nick} ${p.isReady ? '[✓ Ready]' : '[...Waiting]'}`).join(', ');
-        this.sendRoomMessage(room, `[STATUS] Map: ${room.currentMap} | Players (${room.players.length}/${room.maxPlayers}): ${readyList || 'None'}`);
+        this.sendRoomMessage(room, `[STATUS] Map: ${room.currentMap} | Players (${this.getHumanPlayerCount(room)}/${room.maxPlayers}) + ${room.players.length - this.getHumanPlayerCount(room)} spectators: ${readyList || 'None'}`);
         this.sendRoomMessage(room, `Settings: Speed ${room.gameSpeed} | Credits ${room.startingCredits}`);
         break;
       }
