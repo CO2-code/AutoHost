@@ -115,6 +115,9 @@ export interface HostedRoom {
   password?: string;
   maxPlayers: number;
   maxSpectators?: number;
+  humanPlayerCount?: number;
+  spectatorCount?: number;
+  capacity?: number;
   skillLevel?: number;
   currentMap: string;
   mapPool: string[];
