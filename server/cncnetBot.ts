@@ -219,6 +219,9 @@ export class CnCNetAutoHostBot {
   private readonly defaultMaxSpectators = Number.isFinite(Number(process.env.CNCNET_RA1_MAX_SPECTATORS))
     ? Math.max(0, Math.min(4, Math.floor(Number(process.env.CNCNET_RA1_MAX_SPECTATORS))))
     : 2;
+  private readonly idleMapRotateMs = Number.isFinite(Number(process.env.CNCNET_RA1_IDLE_MAP_ROTATE_MINUTES))
+    ? Math.max(0, Number(process.env.CNCNET_RA1_IDLE_MAP_ROTATE_MINUTES)) * 60000
+    : 1200000;
   private roomRotationTimers: Map<string, NodeJS.Timeout> = new Map();
   private roomReadyCountdownTimers: Map<string, NodeJS.Timeout> = new Map();
   private roomFullLockTimers: Map<string, NodeJS.Timeout> = new Map();
@@ -1354,6 +1357,7 @@ export class CnCNetAutoHostBot {
     };
 
     room.players.push(player);
+    room.lastActivityAt = new Date().toISOString();
     if (this.getHumanPlayerCount(room) > room.maxPlayers) {
       player.mustSpectateBy = Date.now() + 30000;
       this.sendRoomMessage(room, `[AUTO-HOST] Player slots are full. ${nick}, choose Spectator in the side list within 30 seconds or you will be removed.`);
@@ -1442,6 +1446,7 @@ export class CnCNetAutoHostBot {
     });
 
     if (room.players.length !== initialLen) {
+      room.lastActivityAt = new Date().toISOString();
       room.tunnelLaunchBlocked = false;
       const renegotiationTimer = this.roomTunnelRenegotiationTimers.get(room.id);
       if (renegotiationTimer) {
@@ -1731,6 +1736,27 @@ export class CnCNetAutoHostBot {
     const now = Date.now();
     for (const room of this.rooms.values()) {
       if (room.status === 'PLAYING') continue;
+      if (
+        this.idleMapRotateMs > 0 &&
+        room.players.length === 0 &&
+        now - Date.parse(room.lastActivityAt) >= this.idleMapRotateMs &&
+        room.mapPool.length > 1
+      ) {
+        const choices = room.mapPool.filter((map) => map !== room.currentMap);
+        const nextMap = choices[Math.floor(Math.random() * choices.length)];
+        if (nextMap) {
+          room.currentMap = nextMap;
+          room.mapVotes = {};
+          room.lastActivityAt = new Date(now).toISOString();
+          this.sendRoomTopic(room);
+          this.sendRoomGameOptions(room);
+          this.broadcastGameAnnouncement(room);
+          this.logHosting('MAP_CHANGED', `Rotated idle RA1 room to map '${nextMap}'.`, {
+            roomId: room.id,
+            channel: room.channel,
+          });
+        }
+      }
       for (const player of [...room.players]) {
         if (player.mustSpectateBy === undefined || this.isSpectator(player) || now < player.mustSpectateBy) continue;
         if (this.getHumanPlayerCount(room) <= room.maxPlayers) {
