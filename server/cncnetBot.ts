@@ -2300,7 +2300,7 @@ export class CnCNetAutoHostBot {
         room.mapPool.length > 1
       ) {
         const nextMap = this.selectNextRoomMap(room);
-        if (nextMap) {
+        if (nextMap && nextMap !== room.currentMap) {
           if (room.currentMap && room.currentMap !== nextMap) {
             room.recentMaps ||= [];
             room.recentMaps.push(room.currentMap);
@@ -2880,7 +2880,11 @@ export class CnCNetAutoHostBot {
           break;
         }
         const nextMap = this.selectNextRoomMap(room);
-        if (nextMap) this.applyRoomMapChange(room, nextMap, `[MAP SWITCH] Vote passed! Next map: ${nextMap}. Ready up again.`);
+        if (nextMap && nextMap !== room.currentMap) {
+          this.applyRoomMapChange(room, nextMap, `[MAP SWITCH] Vote passed! Next map: ${nextMap}. Ready up again.`);
+        } else {
+          this.sendRoomMessage(room, '[MAP] No other compatible maps are available in this room pool.');
+        }
         break;
       }
 
