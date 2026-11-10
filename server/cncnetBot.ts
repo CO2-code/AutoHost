@@ -120,6 +120,8 @@ export interface HostedRoom {
   spectatorCount?: number;
   capacity?: number;
   skillLevel?: number;
+  forceRandomSides?: boolean;
+  forceRandomStarts?: boolean;
   currentMap: string;
   mapPool: string[];
   recentMaps?: string[];
@@ -1408,7 +1410,9 @@ export class CnCNetAutoHostBot {
   }
 
   private sendRoomPlayerExtraOptions(room: HostedRoom) {
-    this.sendQueued(`NOTICE ${room.channel} :\x01PEO 00000;\x01`, `PEO:${room.channel.toLowerCase()}`, 11);
+    const randomSides = room.forceRandomSides ? '1' : '0';
+    const randomStarts = room.forceRandomStarts ? '1' : '0';
+    this.sendQueued(`NOTICE ${room.channel} :\x01PEO ${randomSides}00${randomStarts}0;\x01`, `PEO:${room.channel.toLowerCase()}`, 11);
   }
 
   private sendRoomPlayerOptions(room: HostedRoom) {
@@ -2224,6 +2228,7 @@ export class CnCNetAutoHostBot {
     }
     room.currentMap = map;
     room.mapVotes = {};
+    room.forceRandomStarts = false;
     room.fullCountdownShown = false;
     for (const player of room.players) {
       player.votedMap = undefined;
@@ -2269,6 +2274,38 @@ export class CnCNetAutoHostBot {
     this.evaluateRoomAutomation(room);
   }
 
+  private applyRoomPlayerExtraOptionChange(
+    room: HostedRoom,
+    option: 'randomSides' | 'randomStarts',
+    enabled: boolean,
+    message: string,
+  ) {
+    if (option === 'randomSides') {
+      room.forceRandomSides = enabled;
+      if (enabled) for (const player of room.players) player.sideId = 0;
+    } else {
+      room.forceRandomStarts = enabled;
+      if (enabled) for (const player of room.players) player.startingLocation = 0;
+    }
+    for (const player of room.players) {
+      player.isReady = false;
+      player.unreadySince = Date.now();
+      player.readyWarnedAt = undefined;
+    }
+    const readyTimer = this.roomReadyCountdownTimers.get(room.id);
+    if (readyTimer) {
+      clearTimeout(readyTimer);
+      this.roomReadyCountdownTimers.delete(room.id);
+    }
+    room.optionVotes = {};
+    room.fullCountdownShown = false;
+    this.sendRoomMessage(room, message);
+    this.sendRoomPlayerExtraOptions(room);
+    this.sendRoomPlayerOptions(room);
+    this.broadcastGameAnnouncement(room);
+    this.evaluateRoomAutomation(room);
+  }
+
   private handleOptionVote(room: HostedRoom, player: RoomPlayer, argument: string) {
     if (this.votesNeeded <= 0) {
       this.sendRoomMessage(room, '[VOTE] Lobby option voting is disabled in this room.');
@@ -2292,10 +2329,23 @@ export class CnCNetAutoHostBot {
     );
     let scope: string;
     let voteKey: string;
-    let change: Partial<Ra1GameOptions>;
+    let change: Partial<Ra1GameOptions> = {};
     let description: string;
+    let extraOption: 'randomSides' | 'randomStarts' | undefined;
 
-    if (checkbox) {
+    if (query === 'sides' || query === 'randomsides') {
+      extraOption = 'randomSides';
+      const targetValue = !room.forceRandomSides;
+      scope = 'peo:randomSides';
+      voteKey = `${scope}:${targetValue}`;
+      description = `Random sides ${targetValue ? 'on' : 'off'}`;
+    } else if (query === 'spots' || query === 'starts' || query === 'randomstarts') {
+      extraOption = 'randomStarts';
+      const targetValue = !room.forceRandomStarts;
+      scope = 'peo:randomStarts';
+      voteKey = `${scope}:${targetValue}`;
+      description = `Random starting spots ${targetValue ? 'on' : 'off'}`;
+    } else if (checkbox) {
       if (checkbox.locked) {
         this.sendRoomMessage(room, `[VOTE] ${checkbox.label} is locked by the RA1 client.`);
         return;
@@ -2319,7 +2369,7 @@ export class CnCNetAutoHostBot {
       const requestedValue = parts.slice(1).join(' ').trim();
       const targetValue = dropdown?.options.find((value) => String(value).toLowerCase() === requestedValue.toLowerCase());
       if (!dropdown || !requestedValue || targetValue === undefined) {
-        this.sendRoomMessage(room, '[VOTE] Use a checkbox name, or game/tech/credits/units/speed followed by a valid value.');
+        this.sendRoomMessage(room, '[VOTE] Use a checkbox name, sides, spots, or game/tech/credits/units/speed followed by a valid value.');
         return;
       }
       scope = `dropdown:${dropdownKey}`;
@@ -2344,7 +2394,13 @@ export class CnCNetAutoHostBot {
       this.sendRoomMessage(room, `[VOTE] ${player.nick} votes for ${description} (${votes}/${needed}). Type !voteoption again to agree.`);
       return;
     }
-    this.applyRoomOptionChange(room, change, `[VOTE] Passed! ${description}. Players must ready up again.`);
+    const message = `[VOTE] Passed! ${description}. Players must ready up again.`;
+    if (extraOption) {
+      const enabled = voteKey.endsWith(':true');
+      this.applyRoomPlayerExtraOptionChange(room, extraOption, enabled, message);
+    } else {
+      this.applyRoomOptionChange(room, change, message);
+    }
   }
 
   private handlePlayerCommand(room: HostedRoom, senderNick: string, rawText: string) {
