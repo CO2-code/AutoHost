@@ -300,6 +300,7 @@ export class CnCNetAutoHostBot {
   private chatHistoryFile: string;
   private matchHistoryFile: string;
   private matchHistory: MatchHistoryEntry[] = [];
+  private totalMatchesRecorded = 0;
 
   private stats = {
     totalRoomsCreated: 0,
@@ -386,7 +387,7 @@ export class CnCNetAutoHostBot {
       connectedSince: this.connectedSince ? this.connectedSince.toISOString() : null,
       reconnectAttempts: this.reconnectAttempts,
       nextReconnectAt: this.nextReconnectAt ? this.nextReconnectAt.toISOString() : null,
-      stats: { ...this.stats, totalMatches: this.matchHistory.length },
+      stats: { ...this.stats, totalMatches: this.totalMatchesRecorded },
       lobbyUserCount: this.lobbyUsers.size,
       rooms: this.getRoomSnapshots(),
       gameDefinition: RA1_DEFINITION,
@@ -482,6 +483,7 @@ export class CnCNetAutoHostBot {
           continue;
         }
       }
+      this.totalMatchesRecorded = this.matchHistory.length;
       this.matchHistory = this.matchHistory.slice(-1000);
       const restartTime = new Date().toISOString();
       for (const match of this.matchHistory) {
@@ -523,6 +525,7 @@ export class CnCNetAutoHostBot {
     };
     room.currentMatchId = entry.id;
     this.matchHistory.push(entry);
+    this.totalMatchesRecorded++;
     if (this.matchHistory.length > 1000) this.matchHistory.shift();
     this.appendMatchEvent({ type: 'started', match: entry });
   }
