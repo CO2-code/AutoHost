@@ -1167,6 +1167,7 @@ export class CnCNetAutoHostBot {
     room.status = 'PLAYING';
     room.launchedAt = new Date().toISOString();
     room.lastActivityAt = room.launchedAt;
+    for (const player of room.players) player.isInGame = true;
     this.recordMatchStart(room, gameId);
     this.broadcastGameAnnouncement(room);
     this.scheduleRoomRotation(room);
