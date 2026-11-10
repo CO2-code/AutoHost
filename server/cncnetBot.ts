@@ -634,7 +634,7 @@ export class CnCNetAutoHostBot {
         return;
       }
       this.sendQueue.shift();
-      this.sendRaw(next.command);
+      this.writeRaw(next.command);
     }
 
     if (this.sendQueue.length > 0) {
@@ -649,10 +649,18 @@ export class CnCNetAutoHostBot {
     }
 
     const pending = this.sendQueue.splice(0);
-    for (const item of pending) this.sendRaw(item.command);
+    for (const item of pending) this.writeRaw(item.command);
   }
 
   public sendRaw(command: string) {
+    if (/^(PRIVMSG|NOTICE)\s/i.test(command) && !/\x01STARTV3\b|\x01STRTD\x01/.test(command)) {
+      this.sendQueued(command, undefined, /^PRIVMSG\s/i.test(command) ? 30 : 15);
+      return;
+    }
+    this.writeRaw(command);
+  }
+
+  private writeRaw(command: string) {
     if (this.socket && !this.socket.destroyed && this.socket.writable) {
       const now = Date.now();
       const cost = (2 + Buffer.byteLength(command + '\r\n', 'utf8') / 120) * 1000;
