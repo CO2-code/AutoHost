@@ -2214,7 +2214,7 @@ export class CnCNetAutoHostBot {
   private getMapSha1(mapName: string): string {
     const configuredMapName = process.env.CNCNET_RA1_MAP_NAME?.trim();
     const configuredMapSha1 = process.env.CNCNET_RA1_MAP_SHA1?.trim();
-    if (configuredMapSha1 && /^[a-f0-9]{40}$/i.test(configuredMapSha1) && (!configuredMapName || configuredMapName === mapName)) return configuredMapSha1;
+    if (configuredMapSha1 && /^[a-f0-9]{40}$/i.test(configuredMapSha1) && configuredMapName === mapName) return configuredMapSha1;
     try {
       const configuredHashes = JSON.parse(process.env.CNCNET_RA1_MAP_HASHES || '{}') as Record<string, unknown>;
       const configuredEntry = Object.entries(configuredHashes).find(([name]) => name.toLowerCase() === mapName.toLowerCase());
