@@ -79,6 +79,8 @@ export interface HostedRoom {
   maxPlayers: number;
   configuredMaxPlayers?: number;
   autoThreeVsThreeActive?: boolean;
+  mapHashLaunchBlocked?: boolean;
+  fileHashLaunchBlocked?: boolean;
   maxSpectators?: number;
   humanPlayerCount?: number;
   spectatorCount?: number;
@@ -886,6 +888,7 @@ Create your first IRC room. It will be advertised in #cncnet-ra-games.
                           <span className="flex items-center gap-1">
                             <MapPin className="w-3.5 h-3.5 text-slate-500" />
                             <span className="text-slate-300 truncate max-w-[120px]">{room.currentMap}</span>
+                            {room.mapHashLaunchBlocked && <span className="text-amber-400 font-bold">NO HASH</span>}
                           </span>
                           <span className="flex items-center gap-1 font-mono">
                             <Users className="w-3.5 h-3.5 text-slate-500" />
