@@ -77,6 +77,8 @@ export interface HostedRoom {
   lobbyChannel: string;
   password?: string;
   maxPlayers: number;
+  configuredMaxPlayers?: number;
+  autoThreeVsThreeActive?: boolean;
   maxSpectators?: number;
   humanPlayerCount?: number;
   spectatorCount?: number;
@@ -882,6 +884,7 @@ Create your first IRC room. It will be advertised in #cncnet-ra-games.
                             {(room.spectatorCount ?? room.players.filter((player) => player.sideId === 11).length) > 0 && (
                               <span className="text-slate-400">+ {room.spectatorCount ?? room.players.filter((player) => player.sideId === 11).length} spec</span>
                             )}
+                            {room.autoThreeVsThreeActive && <span className="text-amber-300">Auto 3v3</span>}
                             <span className="text-red-400">({readyCount} ready)</span>
                           </span>
                         </div>
