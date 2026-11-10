@@ -755,7 +755,8 @@ export class CnCNetAutoHostBot {
 
   public sendRaw(command: string) {
     if (/^(PRIVMSG|NOTICE)\s/i.test(command) && !/\x01STARTV3\b|\x01STRTD\x01/.test(command)) {
-      this.sendQueued(command, undefined, /^PRIVMSG\s/i.test(command) ? 30 : 15);
+      const urgentNotice = /\x01(?:RENEGALL|NVRFY|MM|CLRS)\b/.test(command);
+      this.sendQueued(command, undefined, /^PRIVMSG\s/i.test(command) || urgentNotice ? 5 : 15);
       return;
     }
     this.writeRaw(command);
