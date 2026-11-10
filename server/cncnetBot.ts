@@ -255,7 +255,7 @@ export class CnCNetAutoHostBot {
     ? Math.max(0, Number(process.env.CNCNET_RA1_VOTEKICK_BAN_HOURS)) * 3600000
     : 86400000;
   private readonly votesNeeded = Number.isFinite(Number(process.env.CNCNET_RA1_VOTES_NEEDED))
-    ? Math.max(1, Math.floor(Number(process.env.CNCNET_RA1_VOTES_NEEDED)))
+    ? Math.max(0, Math.floor(Number(process.env.CNCNET_RA1_VOTES_NEEDED)))
     : 2;
 
   // Logs and Chat History
@@ -2040,6 +2040,10 @@ export class CnCNetAutoHostBot {
   }
 
   private handleOptionVote(room: HostedRoom, player: RoomPlayer, argument: string) {
+    if (this.votesNeeded <= 0) {
+      this.sendRoomMessage(room, '[VOTE] Lobby option voting is disabled in this room.');
+      return;
+    }
     if (room.status === 'PLAYING') {
       this.sendRoomMessage(room, '[VOTE] Lobby option voting is only available before launch.');
       return;
@@ -2205,7 +2209,7 @@ export class CnCNetAutoHostBot {
         }
 
         const votesForThis = room.mapVotes[matchedMap] || 0;
-        const needed = Math.floor(room.players.length / 2) + 1;
+        const needed = this.votesNeeded > 0 ? Math.min(this.votesNeeded, room.players.length) : Math.floor(room.players.length / 2) + 1;
         this.sendRoomMessage(room, `[VOTE] ${senderNick} voted for '${matchedMap}' (${votesForThis}/${needed}).`);
 
         if (votesForThis >= needed) {
@@ -2217,7 +2221,7 @@ export class CnCNetAutoHostBot {
       case '!next': {
         player.wantsNextMap = true;
         const votes = room.players.filter((p) => p.wantsNextMap).length;
-        const needed = Math.floor(room.players.length / 2) + 1;
+        const needed = this.votesNeeded > 0 ? Math.min(this.votesNeeded, room.players.length) : Math.floor(room.players.length / 2) + 1;
         if (votes < needed) {
           this.sendRoomMessage(room, `[VOTE] ${senderNick} wants a different map (${votes}/${needed}). Type !next to agree.`);
           break;
