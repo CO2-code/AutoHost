@@ -75,10 +75,12 @@ app.get('/api/status', (req, res) => {
       nick: configs[0].nick,
       bots: statuses,
       rooms: statuses.flatMap((status) => status.rooms),
+      lobbyUserCount: Math.max(...statuses.map((status) => status.lobbyUserCount || 0)),
       stats: {
         totalRoomsCreated: statuses.reduce((sum, status) => sum + status.stats.totalRoomsCreated, 0),
         totalPlayersServed: statuses.reduce((sum, status) => sum + status.stats.totalPlayersServed, 0),
         totalReconnects: statuses.reduce((sum, status) => sum + status.stats.totalReconnects, 0),
+        totalMatches: statuses.reduce((sum, status) => sum + (status.stats.totalMatches || 0), 0),
         uptimeSeconds: Math.min(...statuses.map((status) => status.stats.uptimeSeconds)),
       },
     },
