@@ -1188,8 +1188,10 @@ export class CnCNetAutoHostBot {
       room.recentMaps = room.recentMaps.slice(-5);
       room.currentMap = updates.currentMap;
       room.mapVotes = {};
+      room.forceRandomStarts = false;
       room.fullCountdownShown = false;
       for (const player of room.players) player.isReady = false;
+      this.sendRoomPlayerExtraOptions(room);
       const readyTimer = this.roomReadyCountdownTimers.get(room.id);
       if (readyTimer) {
         clearTimeout(readyTimer);
@@ -1756,9 +1758,10 @@ export class CnCNetAutoHostBot {
       if (!match) return;
       const packed = Number.parseInt(match[1], 10);
       if (!Number.isSafeInteger(packed)) return;
-      const nextSideId = packed & 0xff;
+      const requestedSideId = packed & 0xff;
+      const nextSideId = room.forceRandomSides && requestedSideId !== this.spectatorSideId ? 0 : requestedSideId;
       const nextColorId = (packed >>> 8) & 0xff;
-      const nextStartingLocation = (packed >>> 16) & 0xff;
+      const nextStartingLocation = room.forceRandomStarts ? 0 : (packed >>> 16) & 0xff;
       const nextTeamId = (packed >>> 24) & 0xff;
       const previousSideId = player.sideId || 0;
       const previousStartingLocation = player.startingLocation || 0;
@@ -2242,6 +2245,7 @@ export class CnCNetAutoHostBot {
     }
     this.sendRoomMessage(room, reason);
     this.sendRoomTopic(room);
+    this.sendRoomPlayerExtraOptions(room);
     this.sendRoomPlayerOptions(room);
     this.sendRoomGameOptions(room);
     this.broadcastGameAnnouncement(room);
