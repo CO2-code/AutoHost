@@ -166,6 +166,8 @@ export interface MatchHistoryEntry {
   gameTitle: string;
   map: string;
   players: string[];
+  spectators?: string[];
+  endPlayers?: string[];
   gameId: number;
   startedAt: string;
   endedAt?: string;
@@ -440,6 +442,7 @@ export class CnCNetAutoHostBot {
             if (match) {
               match.endedAt = event.endedAt;
               match.endReason = event.endReason;
+              match.endPlayers = Array.isArray(event.endPlayers) ? event.endPlayers : [];
             }
           }
         } catch {
@@ -468,6 +471,7 @@ export class CnCNetAutoHostBot {
       gameTitle: room.gameTitle,
       map: room.currentMap,
       players: room.players.map((player) => player.nick),
+      spectators: room.players.filter((player) => this.isSpectator(player)).map((player) => player.nick),
       gameId,
       startedAt: new Date().toISOString(),
     };
@@ -486,11 +490,13 @@ export class CnCNetAutoHostBot {
     }
     match.endedAt = new Date().toISOString();
     match.endReason = endReason;
+    match.endPlayers = room.players.filter((player) => player.isInGame).map((player) => player.nick);
     this.appendMatchEvent({
       type: 'ended',
       matchId: match.id,
       endedAt: match.endedAt,
       endReason,
+      endPlayers: match.endPlayers,
     });
     room.currentMatchId = undefined;
   }
