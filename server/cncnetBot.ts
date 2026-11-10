@@ -141,6 +141,7 @@ export interface HostedRoom {
   aiLevel?: number;
   tunnelLaunchBlocked?: boolean;
   fileHashLaunchBlocked?: boolean;
+  mapHashLaunchBlocked?: boolean;
   fileHashMismatchReported?: string;
   fullCountdownShown?: boolean;
   lastPlayerOptionNoticeAt?: number;
@@ -1341,6 +1342,7 @@ export class CnCNetAutoHostBot {
       room.recentMaps.push(room.currentMap);
       room.recentMaps = room.recentMaps.slice(-5);
       room.currentMap = updates.currentMap;
+      room.mapHashLaunchBlocked = false;
       room.mapVotes = {};
       room.forceRandomStarts = false;
       room.fullCountdownShown = false;
@@ -1413,6 +1415,18 @@ export class CnCNetAutoHostBot {
       channel: room.channel,
     });
     return room;
+  }
+
+  private validateRoomMapHash(room: HostedRoom, announce = true): boolean {
+    if (this.getMapSha1(room.currentMap)) {
+      room.mapHashLaunchBlocked = false;
+      return true;
+    }
+    if (announce && !room.mapHashLaunchBlocked) {
+      room.mapHashLaunchBlocked = true;
+      this.sendRoomMessage(room, `[AUTO-HOST] No valid RA1 SHA-1 is configured for ${room.currentMap}. Add its hash to CNCNET_RA1_MAP_HASHES before launch.`);
+    }
+    return false;
   }
 
   private validateRoomFileHashes(room: HostedRoom, announce = true): boolean {
@@ -1516,8 +1530,8 @@ export class CnCNetAutoHostBot {
     if (!room.players.length || !room.players.every((player) => player.isReady)) {
       throw new Error('Every human player must be ready before launch.');
     }
-    if (!this.getMapSha1(room.currentMap)) {
-      throw new Error(`No RA1 SHA-1 is configured for ${room.currentMap}. Add it to CNCNET_RA1_MAP_HASHES before launching.`);
+    if (!this.validateRoomMapHash(room)) {
+      throw new Error('A valid RA1 map SHA-1 is required before launch.');
     }
     if (!this.validateRoomFileHashes(room)) {
       throw new Error('Every player must complete file verification and use matching RA1 game files before launch.');
@@ -2463,7 +2477,7 @@ export class CnCNetAutoHostBot {
       return;
     }
 
-    if (!this.validateRoomFileHashes(room) || !this.validateRoomMapCapacity(room) || !this.validateRoomPlayerOptions(room) || !this.validateRoomTeams(room)) {
+    if (!this.validateRoomMapHash(room) || !this.validateRoomFileHashes(room) || !this.validateRoomMapCapacity(room) || !this.validateRoomPlayerOptions(room) || !this.validateRoomTeams(room)) {
       if (readyTimer) {
         clearTimeout(readyTimer);
         this.roomReadyCountdownTimers.delete(room.id);
@@ -2503,6 +2517,7 @@ export class CnCNetAutoHostBot {
         (activeRoom.aiLevel !== undefined
           ? activeRoom.skillLevel !== 1 || activeRoom.maxPlayers !== 2 || activeRoom.players.length !== 1 || this.getHumanPlayerCount(activeRoom) !== 1 || !activeRoom.players.every((player) => player.isReady)
           : this.getHumanPlayerCount(activeRoom) !== activeRoom.maxPlayers || !activeRoom.players.every((player) => player.isReady)) ||
+        !this.validateRoomMapHash(activeRoom, false) ||
         !this.validateRoomFileHashes(activeRoom, false) ||
         !this.validateRoomMapCapacity(activeRoom, false) ||
         !this.validateRoomPlayerOptions(activeRoom, false) ||
@@ -2569,6 +2584,7 @@ export class CnCNetAutoHostBot {
       room.recentMaps = room.recentMaps.slice(-5);
     }
     room.currentMap = map;
+    room.mapHashLaunchBlocked = false;
     room.mapVotes = {};
     room.forceRandomStarts = false;
     room.fullCountdownShown = false;
