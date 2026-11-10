@@ -133,6 +133,7 @@ export interface HostedRoom {
   tunnelLaunchBlocked?: boolean;
   players: RoomPlayer[];
   mapVotes: Record<string, number>;
+  kickVotes?: Record<string, string[]>;
   createdAt: string;
   lastActivityAt: string;
   launchedAt?: string;
@@ -229,6 +230,9 @@ export class CnCNetAutoHostBot {
     ? Math.max(0, Math.floor(Number(process.env.CNCNET_RA1_KICK_AFTER_CANCELLED_STARTS)))
     : 3;
   private readonly spamBanDurationMs = 600000;
+  private readonly voteKickBanMs = Number.isFinite(Number(process.env.CNCNET_RA1_VOTEKICK_BAN_HOURS))
+    ? Math.max(0, Number(process.env.CNCNET_RA1_VOTEKICK_BAN_HOURS)) * 3600000
+    : 86400000;
 
   // Logs and Chat History
   private hostingLogs: HostingLogEntry[] = [];
@@ -903,6 +907,7 @@ export class CnCNetAutoHostBot {
       isLocked: false,
       players: [],
       mapVotes: {},
+      kickVotes: {},
       createdAt: new Date().toISOString(),
       lastActivityAt: new Date().toISOString(),
     };
@@ -1306,7 +1311,7 @@ export class CnCNetAutoHostBot {
     return attempts.length;
   }
 
-  private applyTemporaryRoomBan(room: HostedRoom, nick: string, hostmask: string, reason: string) {
+  private applyTemporaryRoomBan(room: HostedRoom, nick: string, hostmask: string, reason: string, durationMs = this.spamBanDurationMs) {
     const validHostmask = /^[^!@\s]+@[^!@\s]+$/.test(hostmask);
     const mask = validHostmask ? `*!${hostmask}` : `${nick}!*@*`;
     const timerKey = `${room.channel.toLowerCase()}:${mask.toLowerCase()}`;
@@ -1323,7 +1328,7 @@ export class CnCNetAutoHostBot {
       if (this.state === 'REGISTERED' && this.rooms.has(room.id)) {
         this.sendRaw(`MODE ${room.channel} -b ${mask}`);
       }
-    }, this.spamBanDurationMs));
+    }, durationMs));
 
     if (room.players.some((player) => player.nick.toLowerCase() === nick.toLowerCase())) {
       this.handlePlayerLeave(room, nick, reason);
@@ -1976,6 +1981,46 @@ export class CnCNetAutoHostBot {
         break;
       }
 
+      case '!votekick': {
+        const targetNick = arg.replace(/^[@+]/, '');
+        const target = room.players.find((candidate) => candidate.nick.toLowerCase() === targetNick.toLowerCase());
+        if (!targetNick || !target) {
+          this.sendRoomMessage(room, '[VOTEKICK] Usage: !votekick <nick>. The target must be in this room.');
+          return;
+        }
+        if (target === player) {
+          this.sendRoomMessage(room, '[VOTEKICK] You cannot vote to remove yourself.');
+          return;
+        }
+        const otherPlayers = room.players.filter((candidate) => candidate !== target);
+        if (otherPlayers.length < 2 || this.voteKickBanMs <= 0) {
+          this.sendRoomMessage(room, '[VOTEKICK] Voting is unavailable in this room.');
+          return;
+        }
+        room.kickVotes ||= {};
+        for (const [name, voters] of Object.entries(room.kickVotes)) {
+          room.kickVotes[name] = voters.filter((voter) => voter.toLowerCase() !== player.nick.toLowerCase());
+          if (room.kickVotes[name].length === 0) delete room.kickVotes[name];
+        }
+        const key = target.nick.toLowerCase();
+        room.kickVotes[key] ||= [];
+        room.kickVotes[key].push(player.nick);
+        const votes = room.kickVotes[key].filter((voter) =>
+          room.players.some((candidate) => candidate.nick.toLowerCase() === voter.toLowerCase()) &&
+          voter.toLowerCase() !== target.nick.toLowerCase()
+        ).length;
+        const needed = Math.max(2, Math.ceil(otherPlayers.length / 2));
+        if (votes < needed) {
+          this.sendRoomMessage(room, `[VOTEKICK] ${player.nick} votes to remove ${target.nick} (${votes}/${needed}). Type !votekick ${target.nick} to agree.`);
+          break;
+        }
+        delete room.kickVotes[key];
+        const hours = Math.round(this.voteKickBanMs / 3600000);
+        this.sendRoomMessage(room, `[VOTEKICK] ${target.nick} was removed by vote and banned from this room for ${hours} hour(s).`);
+        this.applyTemporaryRoomBan(room, target.nick, target.hostmask || '', 'Removed by vote', this.voteKickBanMs);
+        break;
+      }
+
       case '!status':
       case '!info': {
         const readyList = room.players.map((p) => `${p.nick} ${p.isReady ? '[✓ Ready]' : '[...Waiting]'}`).join(', ');
@@ -1999,7 +2044,7 @@ export class CnCNetAutoHostBot {
       case '!help':
       case '!commands':
       case '!h': {
-        this.sendRoomMessage(room, `[RA1 COMMANDS] !maps, !vote <map>, !mappick <map>, !next, !status, !roll, !help`);
+        this.sendRoomMessage(room, `[RA1 COMMANDS] !maps, !vote <map>, !mappick <map>, !next, !votekick <nick>, !status, !roll, !help`);
         break;
       }
     }
