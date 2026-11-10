@@ -759,6 +759,10 @@ export class CnCNetAutoHostBot {
       this.sendQueued(command, undefined, /^PRIVMSG\s/i.test(command) || urgentNotice ? 5 : 15);
       return;
     }
+    if (/^KICK\s/i.test(command)) {
+      this.sendQueued(command, undefined, 7);
+      return;
+    }
     this.writeRaw(command);
   }
 
