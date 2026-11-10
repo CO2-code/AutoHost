@@ -145,6 +145,7 @@ export interface HostedRoom {
   fullCountdownShown?: boolean;
   lastPlayerOptionNoticeAt?: number;
   lastTeamNoticeAt?: number;
+  lastMapCapacityNoticeAt?: number;
   players: RoomPlayer[];
   mapVotes: Record<string, number>;
   kickVotes?: Record<string, string[]>;
@@ -1362,7 +1363,8 @@ export class CnCNetAutoHostBot {
   private validateRoomMapCapacity(room: HostedRoom, announce = true): boolean {
     const mapMaxPlayers = this.getMapMaxPlayers(room.currentMap);
     if (!mapMaxPlayers || this.getHumanPlayerCount(room) <= mapMaxPlayers) return true;
-    if (announce) {
+    if (announce && (!room.lastMapCapacityNoticeAt || Date.now() - room.lastMapCapacityNoticeAt >= 20000)) {
+      room.lastMapCapacityNoticeAt = Date.now();
       this.sendRoomMessage(room, `[AUTO-HOST] ${room.currentMap} supports at most ${mapMaxPlayers} human players. Select a larger map before launching.`);
     }
     return false;
