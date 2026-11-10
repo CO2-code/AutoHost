@@ -1981,6 +1981,22 @@ export class CnCNetAutoHostBot {
         break;
       }
 
+      case '!invite': {
+        const targetNick = arg.trim().replace(/^[@+]/, '');
+        if (!targetNick || targetNick.toLowerCase() === this.currentNick.toLowerCase()) {
+          this.sendRoomMessage(room, '[INVITE] Usage: !invite <nick>.');
+          return;
+        }
+        if (room.players.some((candidate) => candidate.nick.toLowerCase() === targetNick.toLowerCase())) {
+          this.sendRoomMessage(room, `[INVITE] ${targetNick} is already in this room.`);
+          return;
+        }
+        const invitePayload = `INVITE ${room.channel};${room.gameTitle}${room.password ? `;${room.password}` : ''}`;
+        this.sendRaw(`PRIVMSG ${targetNick} :\x01${invitePayload}\x01`);
+        this.sendRoomMessage(room, `[INVITE] Sent a CnCNet game invitation to ${targetNick}.`);
+        break;
+      }
+
       case '!votekick': {
         const targetNick = arg.replace(/^[@+]/, '');
         const target = room.players.find((candidate) => candidate.nick.toLowerCase() === targetNick.toLowerCase());
@@ -2044,7 +2060,7 @@ export class CnCNetAutoHostBot {
       case '!help':
       case '!commands':
       case '!h': {
-        this.sendRoomMessage(room, `[RA1 COMMANDS] !maps, !vote <map>, !mappick <map>, !next, !votekick <nick>, !status, !roll, !help`);
+        this.sendRoomMessage(room, `[RA1 COMMANDS] !maps, !vote <map>, !mappick <map>, !next, !invite <nick>, !votekick <nick>, !status, !roll, !help`);
         break;
       }
     }
