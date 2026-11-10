@@ -98,6 +98,9 @@ export interface RoomPlayer {
   tunnelNegotiationFailures?: number;
   tunnelNegotiationReportedPeers?: number;
   tunnelNegotiationReportReceived?: boolean;
+  unreadySince?: number;
+  readyWarnedAt?: number;
+  cancelledStarts?: number;
 }
 
 export interface HostedRoom {
@@ -206,6 +209,15 @@ export class CnCNetAutoHostBot {
   private readonly roomFullLockDelayMs = 10000;
   private readonly readyLaunchCountdownMs = 15000;
   private readonly soloAiFallbackDelayMs = 180000;
+  private readonly readyGraceMs = Number.isFinite(Number(process.env.CNCNET_RA1_READY_GRACE_SECONDS))
+    ? Math.max(0, Number(process.env.CNCNET_RA1_READY_GRACE_SECONDS)) * 1000
+    : 20000;
+  private readonly kickUnreadyMs = Number.isFinite(Number(process.env.CNCNET_RA1_KICK_UNREADY_SECONDS))
+    ? Math.max(0, Number(process.env.CNCNET_RA1_KICK_UNREADY_SECONDS)) * 1000
+    : 12000;
+  private readonly kickAfterCancelledStarts = Number.isFinite(Number(process.env.CNCNET_RA1_KICK_AFTER_CANCELLED_STARTS))
+    ? Math.max(0, Math.floor(Number(process.env.CNCNET_RA1_KICK_AFTER_CANCELLED_STARTS)))
+    : 3;
   private readonly spamBanDurationMs = 600000;
 
   // Logs and Chat History
@@ -268,6 +280,7 @@ export class CnCNetAutoHostBot {
           this.stats.uptimeSeconds = Math.floor((Date.now() - this.connectedSince.getTime()) / 1000);
         }
       }
+      this.checkUnreadyPlayers();
     }, 1000);
 
     this.logSystem(`CnCNet RA1 IRC room bot initialized. Game-list channel: ${this.config.announcementChannel}`);
@@ -1391,7 +1404,15 @@ export class CnCNetAutoHostBot {
     if (cleanMsg.startsWith('R ')) {
       const readyStatus = Number.parseInt(cleanMsg.substring(2).trim(), 10);
       if (!Number.isInteger(readyStatus) || readyStatus < 0 || readyStatus > 2) return;
+      if (readyStatus === 0 && this.noteCancelledStart(room, player)) return;
       player.isReady = readyStatus > 0;
+      if (player.isReady) {
+        player.unreadySince = undefined;
+        player.readyWarnedAt = undefined;
+      } else {
+        player.unreadySince = Date.now();
+        player.readyWarnedAt = undefined;
+      }
       this.logHosting('PLAYER_READY', `Player '${senderNick}' reported XNA ready state ${readyStatus}.`, {
         roomId: room.id,
         channel: room.channel,
@@ -1531,6 +1552,62 @@ export class CnCNetAutoHostBot {
     }, this.roomTunnelRenegotiationDelayMs);
 
     this.roomTunnelRenegotiationTimers.set(room.id, timer);
+  }
+
+  private checkUnreadyPlayers() {
+    if (this.state !== 'REGISTERED' || this.kickUnreadyMs <= 0) return;
+    const now = Date.now();
+    for (const room of this.rooms.values()) {
+      if (room.status === 'PLAYING') continue;
+      const aiFallback = room.aiLevel !== undefined && room.skillLevel === 1 && room.maxPlayers === 2 && room.players.length === 1;
+      const roomIsFull = room.players.length === room.maxPlayers || aiFallback;
+      const tunnelsReady = room.players.length <= 1 || room.players.every((player) =>
+        player.tunnelNegotiationReportReceived &&
+        player.tunnelNegotiationReportedPeers === room.players.length - 1 &&
+        player.tunnelNegotiationSuccesses === room.players.length - 1
+      );
+      if (!roomIsFull || !tunnelsReady) {
+        for (const player of room.players) {
+          player.unreadySince = undefined;
+          player.readyWarnedAt = undefined;
+        }
+        continue;
+      }
+
+      for (const player of [...room.players]) {
+        if (player.isReady) {
+          player.unreadySince = undefined;
+          player.readyWarnedAt = undefined;
+          continue;
+        }
+        player.unreadySince ??= now;
+        if (player.readyWarnedAt === undefined && now - player.unreadySince >= this.readyGraceMs) {
+          player.readyWarnedAt = now;
+          this.sendRoomMessage(room, `[AUTO-HOST] ${player.nick}, please ready up. You will be kicked in ${Math.ceil(this.kickUnreadyMs / 1000)} seconds if you remain unready.`);
+        } else if (player.readyWarnedAt !== undefined && now - player.readyWarnedAt >= this.kickUnreadyMs) {
+          this.sendRoomMessage(room, `[AUTO-HOST] ${player.nick} was removed for remaining unready.`);
+          this.sendRaw(`KICK ${room.channel} ${player.nick} :Not ready`);
+          this.handlePlayerLeave(room, player.nick, 'kicked (not ready)');
+        }
+      }
+    }
+  }
+
+  private noteCancelledStart(room: HostedRoom, player: RoomPlayer): boolean {
+    if (!player.isReady || !this.roomReadyCountdownTimers.has(room.id)) return false;
+    player.cancelledStarts = (player.cancelledStarts || 0) + 1;
+    const count = player.cancelledStarts;
+    const limit = this.kickAfterCancelledStarts;
+    if (limit > 0 && count >= limit) {
+      this.sendRoomMessage(room, `[AUTO-HOST] ${player.nick} was removed for repeatedly cancelling the start countdown.`);
+      this.sendRaw(`KICK ${room.channel} ${player.nick} :Repeatedly cancelled start countdown`);
+      this.handlePlayerLeave(room, player.nick, 'kicked (cancelled starts)');
+      return true;
+    }
+    if (limit > 1 && count === limit - 1) {
+      this.sendRoomMessage(room, `[AUTO-HOST] ${player.nick}, one more countdown cancellation will result in removal.`);
+    }
+    return false;
   }
 
   private evaluateRoomAutomation(room: HostedRoom) {
@@ -1732,6 +1809,8 @@ export class CnCNetAutoHostBot {
       case '!ready':
       case '!r': {
         player.isReady = true;
+        player.unreadySince = undefined;
+        player.readyWarnedAt = undefined;
         const readyCount = room.players.filter((p) => p.isReady).length;
         this.sendRoomMessage(room, `[READY] ${senderNick} is READY! (${readyCount}/${room.players.length} ready)`);
 
@@ -1750,7 +1829,10 @@ export class CnCNetAutoHostBot {
       case '!unready':
       case '!ur':
       case '!notready': {
+        if (this.noteCancelledStart(room, player)) break;
         player.isReady = false;
+        player.unreadySince = Date.now();
+        player.readyWarnedAt = undefined;
         this.sendRoomMessage(room, `[UNREADY] ${senderNick} is no longer ready.`);
         this.broadcastGameAnnouncement(room);
         this.sendRoomPlayerOptions(room);
