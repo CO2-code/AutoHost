@@ -138,6 +138,7 @@ export interface HostedRoom {
   fileHashLaunchBlocked?: boolean;
   fileHashMismatchReported?: string;
   lastPlayerOptionNoticeAt?: number;
+  lastTeamNoticeAt?: number;
   players: RoomPlayer[];
   mapVotes: Record<string, number>;
   kickVotes?: Record<string, string[]>;
@@ -263,6 +264,7 @@ export class CnCNetAutoHostBot {
   private readonly votesNeeded = Number.isFinite(Number(process.env.CNCNET_RA1_VOTES_NEEDED))
     ? Math.max(0, Math.floor(Number(process.env.CNCNET_RA1_VOTES_NEEDED)))
     : 2;
+  private readonly requireBalancedTeams = process.env.CNCNET_RA1_REQUIRE_BALANCED_TEAMS?.toLowerCase() === 'true';
 
   // Logs and Chat History
   private hostingLogs: HostingLogEntry[] = [];
@@ -1275,6 +1277,24 @@ export class CnCNetAutoHostBot {
     return false;
   }
 
+  private validateRoomTeams(room: HostedRoom, announce = true): boolean {
+    const humans = room.players.filter((player) => !this.isSpectator(player));
+    if (!this.requireBalancedTeams || humans.length < 4 || humans.length % 2 !== 0) return true;
+    const teamCounts = new Map<number, number>();
+    for (const player of humans) {
+      const team = player.teamId || 0;
+      teamCounts.set(team, (teamCounts.get(team) || 0) + 1);
+    }
+    const balanced = teamCounts.size === 2 && Array.from(teamCounts.entries()).every(([team, count]) =>
+      team > 0 && count === humans.length / 2
+    );
+    if (!balanced && announce && (!room.lastTeamNoticeAt || Date.now() - room.lastTeamNoticeAt >= 30000)) {
+      room.lastTeamNoticeAt = Date.now();
+      this.sendRoomMessage(room, `[AUTO-HOST] Teams must be balanced ${humans.length / 2} vs ${humans.length / 2}. Select teams before launching.`);
+    }
+    return balanced;
+  }
+
   public launchRoom(roomId: string): HostedRoom {
     const room = this.rooms.get(roomId);
     if (!room) throw new Error('Room not found');
@@ -1293,6 +1313,9 @@ export class CnCNetAutoHostBot {
     }
     if (!this.validateRoomPlayerOptions(room)) {
       throw new Error('Players must choose different colors before launch.');
+    }
+    if (!this.validateRoomTeams(room)) {
+      throw new Error('Players must choose balanced teams before launch.');
     }
     if (room.players.length > 1 && !room.players.every((player) =>
       player.tunnelNegotiationReportReceived &&
@@ -1698,7 +1721,12 @@ export class CnCNetAutoHostBot {
       const packed = Number.parseInt(match[1], 10);
       if (!Number.isSafeInteger(packed)) return;
       const nextSideId = packed & 0xff;
+      const nextColorId = (packed >>> 8) & 0xff;
+      const nextStartingLocation = (packed >>> 16) & 0xff;
+      const nextTeamId = (packed >>> 24) & 0xff;
       const previousSideId = player.sideId || 0;
+      const previousStartingLocation = player.startingLocation || 0;
+      const previousTeamId = player.teamId || 0;
       if (nextSideId === this.spectatorSideId) {
         const currentSpectators = room.players.filter((roomPlayer) => roomPlayer !== player && this.isSpectator(roomPlayer)).length;
         if (currentSpectators >= (room.maxSpectators ?? this.defaultMaxSpectators)) {
@@ -1710,10 +1738,10 @@ export class CnCNetAutoHostBot {
         player.mustSpectateBy = this.getHumanPlayerCount(room) >= room.maxPlayers ? Date.now() + 30000 : undefined;
       }
       player.sideId = nextSideId;
-      player.colorId = (packed >>> 8) & 0xff;
-      player.startingLocation = (packed >>> 16) & 0xff;
-      player.teamId = (packed >>> 24) & 0xff;
-      if (previousSideId !== nextSideId) {
+      player.colorId = nextColorId;
+      player.startingLocation = nextStartingLocation;
+      player.teamId = nextTeamId;
+      if (previousSideId !== nextSideId || previousStartingLocation !== nextStartingLocation || previousTeamId !== nextTeamId) {
         for (const roomPlayer of room.players) {
           roomPlayer.isReady = false;
           roomPlayer.unreadySince = Date.now();
@@ -2074,7 +2102,7 @@ export class CnCNetAutoHostBot {
       return;
     }
 
-    if (!this.validateRoomFileHashes(room) || !this.validateRoomPlayerOptions(room)) {
+    if (!this.validateRoomFileHashes(room) || !this.validateRoomPlayerOptions(room) || !this.validateRoomTeams(room)) {
       if (readyTimer) {
         clearTimeout(readyTimer);
         this.roomReadyCountdownTimers.delete(room.id);
@@ -2112,6 +2140,7 @@ export class CnCNetAutoHostBot {
           : this.getHumanPlayerCount(activeRoom) !== activeRoom.maxPlayers || !activeRoom.players.every((player) => player.isReady)) ||
         !this.validateRoomFileHashes(activeRoom, false) ||
         !this.validateRoomPlayerOptions(activeRoom, false) ||
+        !this.validateRoomTeams(activeRoom, false) ||
         (activeRoom.players.length > 1 && !activeRoom.players.every((player) =>
           player.tunnelNegotiationReportReceived &&
           player.tunnelNegotiationReportedPeers === activeRoom.players.length - 1 &&
