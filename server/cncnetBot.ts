@@ -97,6 +97,7 @@ export interface RoomPlayer {
   tunnelNegotiationFailures?: number;
   tunnelNegotiationReportedPeers?: number;
   tunnelNegotiationReportReceived?: boolean;
+  tunnelLaunchBlocked?: boolean;
 }
 
 export interface HostedRoom {
@@ -978,6 +979,20 @@ export class CnCNetAutoHostBot {
     if (this.state !== 'REGISTERED') throw new Error('Bot must be connected to CnCNet IRC before launching a room.');
     if (!room.isLocked) throw new Error('Lock the room before launching it.');
     if (room.status === 'PLAYING') throw new Error('This room has already been launched.');
+    const aiFallback = room.aiLevel !== undefined && room.skillLevel === 1 && room.maxPlayers === 2 && room.players.length === 1;
+    if (!aiFallback && room.players.length !== room.maxPlayers) {
+      throw new Error(`Room is not full (${room.players.length}/${room.maxPlayers}).`);
+    }
+    if (!room.players.length || !room.players.every((player) => player.isReady)) {
+      throw new Error('Every human player must be ready before launch.');
+    }
+    if (room.players.length > 1 && !room.players.every((player) =>
+      player.tunnelNegotiationReportReceived &&
+      player.tunnelNegotiationReportedPeers === room.players.length - 1 &&
+      player.tunnelNegotiationSuccesses === room.players.length - 1
+    )) {
+      throw new Error('All player tunnel connections must succeed before launch.');
+    }
 
     const players = room.players.map((player) => player.nick);
     const now = new Date();
@@ -1340,6 +1355,7 @@ export class CnCNetAutoHostBot {
       const requiredPeers = room.players.length - 1;
       if (requiredPeers > 0 && room.players.every((roomPlayer) =>
         roomPlayer.tunnelNegotiationReportReceived &&
+        roomPlayer.tunnelNegotiationReportedPeers === requiredPeers &&
         roomPlayer.tunnelNegotiationSuccesses === requiredPeers
       )) {
         const timer = this.roomTunnelRenegotiationTimers.get(room.id);
@@ -1352,6 +1368,7 @@ export class CnCNetAutoHostBot {
           channel: room.channel,
         });
       }
+      this.evaluateRoomAutomation(room);
       return;
     }
 
@@ -1602,7 +1619,7 @@ export class CnCNetAutoHostBot {
     }
 
     const allReady = room.aiLevel !== undefined
-      ? room.players.length === 1 && room.players.every((player) => player.isReady)
+      ? room.skillLevel === 1 && room.maxPlayers === 2 && room.players.length === 1 && room.players.every((player) => player.isReady)
       : room.players.length === room.maxPlayers && room.players.every((player) => player.isReady);
     if (!allReady) {
       if (readyTimer) {
@@ -1613,9 +1630,26 @@ export class CnCNetAutoHostBot {
       return;
     }
 
+    if (room.players.length > 1 && !room.players.every((player) =>
+      player.tunnelNegotiationReportReceived &&
+      player.tunnelNegotiationReportedPeers === room.players.length - 1 &&
+      player.tunnelNegotiationSuccesses === room.players.length - 1
+    )) {
+      if (readyTimer) {
+        clearTimeout(readyTimer);
+        this.roomReadyCountdownTimers.delete(room.id);
+      }
+      if (!room.tunnelLaunchBlocked) {
+        room.tunnelLaunchBlocked = true;
+        this.sendRoomMessage(room, '[AUTO-HOST] Everyone is ready. Waiting for all player tunnel connections before launching.');
+      }
+      return;
+    }
+    room.tunnelLaunchBlocked = false;
+
     if (readyTimer) return;
 
-    this.sendRoomMessage(room, '[AUTO-HOST] All players are ready! Launching in 15 seconds.');
+    this.sendRoomMessage(room, '[AUTO-HOST] All players are ready and connected! Launching in 15 seconds.');
     const timer = setTimeout(() => {
       this.roomReadyCountdownTimers.delete(room.id);
       const activeRoom = this.rooms.get(room.id);
@@ -1624,6 +1658,11 @@ export class CnCNetAutoHostBot {
         (activeRoom.aiLevel !== undefined
           ? activeRoom.skillLevel !== 1 || activeRoom.maxPlayers !== 2 || activeRoom.players.length !== 1 || !activeRoom.players.every((player) => player.isReady)
           : activeRoom.players.length !== activeRoom.maxPlayers || !activeRoom.players.every((player) => player.isReady)) ||
+        (activeRoom.players.length > 1 && !activeRoom.players.every((player) =>
+          player.tunnelNegotiationReportReceived &&
+          player.tunnelNegotiationReportedPeers === activeRoom.players.length - 1 &&
+          player.tunnelNegotiationSuccesses === activeRoom.players.length - 1
+        )) ||
         !activeRoom.isLocked
       ) {
         this.sendRoomMessage(activeRoom, '[AUTO-HOST] Launch cancelled: player readiness or room lock changed.');
