@@ -674,6 +674,17 @@ Announces IRC room listings in #cncnet-ra-games. The game-list channel is public
 
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-3.5 flex flex-col justify-between">
             <div className="flex items-center justify-between text-slate-400 text-xs font-medium">
+              <span>Matches Recorded</span>
+              <Activity className="w-4 h-4 text-amber-400" />
+            </div>
+            <div className="mt-2">
+              <div className="text-2xl font-black text-amber-300">{status?.stats.totalMatches || matchHistory.length}</div>
+              <p className="text-xs text-slate-400 mt-0.5">Saved match records</p>
+            </div>
+          </div>
+
+          <div className="bg-slate-900 border border-slate-800 rounded-xl p-3.5 flex flex-col justify-between">
+            <div className="flex items-center justify-between text-slate-400 text-xs font-medium">
               <span>24/7 Resilience</span>
               <Clock className="w-4 h-4 text-emerald-400" />
             </div>
