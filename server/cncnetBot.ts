@@ -1849,6 +1849,8 @@ export class CnCNetAutoHostBot {
         channel: `#cncnet-ra-game${suffix}`,
         gameTitle: activeRoom.gameTitle,
         maxPlayers: activeRoom.maxPlayers,
+        maxSpectators: activeRoom.maxSpectators,
+        skillLevel: activeRoom.skillLevel,
         currentMap: activeRoom.currentMap,
         mapPool: [...activeRoom.mapPool],
         options: { ...activeRoom.options },
