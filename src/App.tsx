@@ -953,9 +953,9 @@ Create your first IRC room. It will be advertised in #cncnet-ra-games.
                         </button>
                         <button
                           onClick={() => handleSetRoomLocked(selectedRoom.id, !selectedRoom.isLocked)}
-                          disabled={isLoading || selectedRoom.status === 'PLAYING' || (selectedRoom.isLocked && ((selectedRoom.humanPlayerCount ?? selectedRoom.players.filter((player) => player.sideId !== (room.spectatorSideId ?? 11)).length) >= selectedRoom.maxPlayers || selectedRoom.players.length >= (selectedRoom.capacity ?? selectedRoom.maxPlayers + (selectedRoom.maxSpectators ?? 2))))}
+                          disabled={isLoading || selectedRoom.status === 'PLAYING' || (selectedRoom.isLocked && ((selectedRoom.humanPlayerCount ?? selectedRoom.players.filter((player) => player.sideId !== (selectedRoom.spectatorSideId ?? 11)).length) >= selectedRoom.maxPlayers || selectedRoom.players.length >= (selectedRoom.capacity ?? selectedRoom.maxPlayers + (selectedRoom.maxSpectators ?? 2))))}
                           className={`px-2.5 py-1.5 rounded-lg border text-xs font-semibold flex items-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${selectedRoom.isLocked ? 'bg-amber-950/60 hover:bg-amber-950 text-amber-300 border-amber-800' : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'}`}
-                          title={selectedRoom.isLocked && ((selectedRoom.humanPlayerCount ?? selectedRoom.players.filter((player) => player.sideId !== (room.spectatorSideId ?? 11)).length) >= selectedRoom.maxPlayers || selectedRoom.players.length >= (selectedRoom.capacity ?? selectedRoom.maxPlayers + (selectedRoom.maxSpectators ?? 2))) ? 'Cannot unlock: player or spectator capacity reached' : selectedRoom.isLocked ? 'Unlock room' : 'Lock room using IRC MODE +i'}
+                          title={selectedRoom.isLocked && ((selectedRoom.humanPlayerCount ?? selectedRoom.players.filter((player) => player.sideId !== (selectedRoom.spectatorSideId ?? 11)).length) >= selectedRoom.maxPlayers || selectedRoom.players.length >= (selectedRoom.capacity ?? selectedRoom.maxPlayers + (selectedRoom.maxSpectators ?? 2))) ? 'Cannot unlock: player or spectator capacity reached' : selectedRoom.isLocked ? 'Unlock room' : 'Lock room using IRC MODE +i'}
                         >
                           <Shield className="w-3.5 h-3.5" />
                           {selectedRoom.isLocked ? 'Unlock Room' : 'Lock Room'}
@@ -1333,7 +1333,7 @@ Create your first IRC room. It will be advertised in #cncnet-ra-games.
                       <div className="flex items-center justify-between mb-2">
                         <h4 className="text-xs font-bold text-slate-300 flex items-center gap-1.5 uppercase tracking-wider">
                           <Users className="w-3.5 h-3.5 text-red-400" />
-                          Connected Commanders ({selectedRoom.humanPlayerCount ?? selectedRoom.players.filter((player) => player.sideId !== (room.spectatorSideId ?? 11)).length}/{selectedRoom.maxPlayers}) + {selectedRoom.spectatorCount ?? selectedRoom.players.filter((player) => player.sideId === (room.spectatorSideId ?? 11)).length} spectators
+                          Connected Commanders ({selectedRoom.humanPlayerCount ?? selectedRoom.players.filter((player) => player.sideId !== (selectedRoom.spectatorSideId ?? 11)).length}/{selectedRoom.maxPlayers}) + {selectedRoom.spectatorCount ?? selectedRoom.players.filter((player) => player.sideId === (selectedRoom.spectatorSideId ?? 11)).length} spectators
                         </h4>
                         <span className={`text-[11px] ${selectedRoom.isLocked ? 'text-amber-300' : 'text-slate-400'}`}>
                           {selectedRoom.isLocked ? 'Room is locked to new players' : 'Room is open to players'}
