@@ -881,10 +881,23 @@ export class CnCNetAutoHostBot {
       if (joinedChannel === this.config.announcementChannel.toLowerCase()) {
         if (senderNick.toLowerCase() === this.currentNick.toLowerCase()) {
           this.logHosting('SYSTEM', `Bot successfully joined ${this.config.announcementChannel} without a key!`);
-          // Broadcast rooms to #cncnet-ra-games
           for (const room of this.rooms.values()) {
             this.broadcastGameAnnouncement(room);
           }
+        }
+        return;
+      }
+
+      if (joinedChannel === RA1_DEFINITION.lobbyChannel.toLowerCase()) {
+        const nickKey = senderNick.toLowerCase();
+        if (nickKey === this.currentNick.toLowerCase()) {
+          this.lobbyNamesSnapshot = new Map();
+          this.lobbyNamesDepartures = new Set();
+          this.lobbyNamesJoined = new Map();
+        } else if (!nickKey.startsWith('ra1_autohost')) {
+          this.lobbyUsers.set(nickKey, senderNick);
+          this.lobbyNamesDepartures.delete(nickKey);
+          if (this.lobbyNamesSnapshot) this.lobbyNamesJoined.set(nickKey, senderNick);
         }
         return;
       }
@@ -923,10 +936,19 @@ export class CnCNetAutoHostBot {
         targetNick = params[1];
       }
 
+      const targetKey = targetNick.toLowerCase();
+      if (command === 'QUIT' || channelTarget === RA1_DEFINITION.lobbyChannel.toLowerCase()) {
+        this.lobbyUsers.delete(targetKey);
+        if (this.lobbyNamesSnapshot) {
+          this.lobbyNamesDepartures.add(targetKey);
+          this.lobbyNamesJoined.delete(targetKey);
+        }
+      }
+
       for (const room of this.rooms.values()) {
         const matchesRoom = room.channel.toLowerCase() === channelTarget || command === 'QUIT';
         if (matchesRoom) {
-          this.roomNamesDepartures.get(room.id)?.add(targetNick.toLowerCase());
+          this.roomNamesDepartures.get(room.id)?.add(targetKey);
           this.handlePlayerLeave(room, targetNick, trailing || 'Left RA1 match room');
         }
       }
@@ -935,6 +957,21 @@ export class CnCNetAutoHostBot {
 
     if (command === '353') {
       const channel = (params[2] || '').toLowerCase();
+      if (channel === RA1_DEFINITION.lobbyChannel.toLowerCase() && trailing) {
+        if (!this.lobbyNamesSnapshot) {
+          this.lobbyNamesSnapshot = new Map();
+          this.lobbyNamesDepartures = new Set();
+          this.lobbyNamesJoined = new Map();
+        }
+        for (const entry of trailing.split(/\s+/)) {
+          const nick = entry.replace(/^[@+%&~]+/, '');
+          const key = nick.toLowerCase();
+          if (nick && key !== this.currentNick.toLowerCase() && !key.startsWith('ra1_autohost')) {
+            this.lobbyNamesSnapshot.set(key, nick);
+          }
+        }
+        return;
+      }
       const room = Array.from(this.rooms.values()).find((item) => item.channel.toLowerCase() === channel);
       if (room && trailing) {
         let snapshot = this.roomNamesSnapshots.get(room.id);
@@ -955,6 +992,17 @@ export class CnCNetAutoHostBot {
 
     if (command === '366') {
       const channel = (params[1] || '').toLowerCase();
+      if (channel === RA1_DEFINITION.lobbyChannel.toLowerCase()) {
+        const snapshot = this.lobbyNamesSnapshot || new Map<string, string>();
+        for (const nick of this.lobbyNamesDepartures) snapshot.delete(nick);
+        for (const [key, nick] of this.lobbyNamesJoined) snapshot.set(key, nick);
+        this.lobbyUsers = snapshot;
+        this.lobbyNamesSnapshot = null;
+        this.lobbyNamesDepartures.clear();
+        this.lobbyNamesJoined.clear();
+        this.updateDynamicRoomSizes();
+        return;
+      }
       const room = Array.from(this.rooms.values()).find((item) => item.channel.toLowerCase() === channel);
       if (room) {
         const snapshot = this.roomNamesSnapshots.get(room.id);
