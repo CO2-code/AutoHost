@@ -122,6 +122,7 @@ export interface HostedRoom {
   skillLevel?: number;
   currentMap: string;
   mapPool: string[];
+  recentMaps?: string[];
   options: Ra1GameOptions;
   // Legacy convenience fields kept in sync with options:
   gameSpeed?: number | string;
@@ -1081,6 +1082,7 @@ export class CnCNetAutoHostBot {
       skillLevel: Math.max(0, Math.min(3, Number(options.skillLevel) || 0)),
       currentMap: options.currentMap || RA1_DEFINITION.defaultMaps[0],
       mapPool: options.mapPool && options.mapPool.length > 0 ? options.mapPool : [...RA1_DEFINITION.defaultMaps],
+      recentMaps: [],
       options: roomOptions,
       gameSpeed: roomOptions.gameSpeed,
       startingCredits: roomOptions.credits,
@@ -1855,6 +1857,7 @@ export class CnCNetAutoHostBot {
         skillLevel: activeRoom.skillLevel,
         currentMap: activeRoom.currentMap,
         mapPool: [...activeRoom.mapPool],
+        recentMaps: [...(activeRoom.recentMaps || [])],
         options: { ...activeRoom.options },
         password: activeRoom.password,
       };
@@ -1929,9 +1932,13 @@ export class CnCNetAutoHostBot {
         now - Date.parse(room.lastActivityAt) >= this.idleMapRotateMs &&
         room.mapPool.length > 1
       ) {
-        const choices = room.mapPool.filter((map) => map !== room.currentMap);
-        const nextMap = choices[Math.floor(Math.random() * choices.length)];
+        const nextMap = this.selectNextRoomMap(room);
         if (nextMap) {
+          if (room.currentMap && room.currentMap !== nextMap) {
+            room.recentMaps ||= [];
+            room.recentMaps.push(room.currentMap);
+            room.recentMaps = room.recentMaps.slice(-5);
+          }
           room.currentMap = nextMap;
           room.mapVotes = {};
           room.lastActivityAt = new Date(now).toISOString();
@@ -2170,7 +2177,19 @@ export class CnCNetAutoHostBot {
     this.roomReadyCountdownTimers.set(room.id, timer);
   }
 
+  private selectNextRoomMap(room: HostedRoom): string | undefined {
+    const recent = new Set(room.recentMaps || []);
+    let choices = room.mapPool.filter((map) => map !== room.currentMap && !recent.has(map));
+    if (choices.length === 0) choices = room.mapPool.filter((map) => map !== room.currentMap);
+    return choices.length ? choices[Math.floor(Math.random() * choices.length)] : room.currentMap;
+  }
+
   private applyRoomMapChange(room: HostedRoom, map: string, reason: string) {
+    if (room.currentMap && room.currentMap !== map) {
+      room.recentMaps ||= [];
+      room.recentMaps.push(room.currentMap);
+      room.recentMaps = room.recentMaps.slice(-5);
+    }
     room.currentMap = map;
     room.mapVotes = {};
     for (const player of room.players) {
@@ -2403,8 +2422,7 @@ export class CnCNetAutoHostBot {
           this.sendRoomMessage(room, `[VOTE] ${senderNick} wants a different map (${votes}/${needed}). Type !next to agree.`);
           break;
         }
-        const choices = room.mapPool.filter((map) => map !== room.currentMap);
-        const nextMap = choices.length ? choices[Math.floor(Math.random() * choices.length)] : room.currentMap;
+        const nextMap = this.selectNextRoomMap(room);
         if (nextMap) this.applyRoomMapChange(room, nextMap, `[MAP SWITCH] Vote passed! Next map: ${nextMap}. Ready up again.`);
         break;
       }
