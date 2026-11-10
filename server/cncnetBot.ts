@@ -137,6 +137,7 @@ export interface HostedRoom {
   createdAt: string;
   lastActivityAt: string;
   launchedAt?: string;
+  currentMatchId?: string;
 }
 
 export interface CnCNetBotConfig {
@@ -152,6 +153,19 @@ export interface CnCNetBotConfig {
   maxReconnectIntervalSec: number;
   announcementIntervalSec: number;
   welcomeMessage: string;
+}
+
+export interface MatchHistoryEntry {
+  id: string;
+  roomId: string;
+  channel: string;
+  gameTitle: string;
+  map: string;
+  players: string[];
+  gameId: number;
+  startedAt: string;
+  endedAt?: string;
+  endReason?: string;
 }
 
 export interface HostingLogEntry {
@@ -242,6 +256,8 @@ export class CnCNetAutoHostBot {
   private logsDir: string;
   private hostingLogFile: string;
   private activityLogFile: string;
+  private matchHistoryFile: string;
+  private matchHistory: MatchHistoryEntry[] = [];
 
   private stats = {
     totalRoomsCreated: 0,
@@ -286,6 +302,8 @@ export class CnCNetAutoHostBot {
 
     this.hostingLogFile = path.join(this.logsDir, 'cncnet_hosting.log');
     this.activityLogFile = path.join(this.logsDir, 'cncnet_activity.log');
+    this.matchHistoryFile = path.join(this.logsDir, 'matches.jsonl');
+    this.loadMatchHistory();
 
     // Uptime counter
     setInterval(() => {
@@ -333,6 +351,83 @@ export class CnCNetAutoHostBot {
 
   public getRoom(id: string): HostedRoom | undefined {
     return this.rooms.get(id);
+  }
+
+  public getMatchHistory(limit = 100): MatchHistoryEntry[] {
+    return this.matchHistory.slice(-Math.max(1, limit)).reverse().map((entry) => ({
+      ...entry,
+      players: [...entry.players],
+    }));
+  }
+
+  private loadMatchHistory() {
+    if (!fs.existsSync(this.matchHistoryFile)) return;
+    try {
+      const lines = fs.readFileSync(this.matchHistoryFile, 'utf8').split(/\r?\n/);
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        try {
+          const event = JSON.parse(line);
+          if (event.type === 'started' && event.match) {
+            this.matchHistory.push(event.match as MatchHistoryEntry);
+          } else if (event.type === 'ended') {
+            const match = this.matchHistory.find((entry) => entry.id === event.matchId);
+            if (match) {
+              match.endedAt = event.endedAt;
+              match.endReason = event.endReason;
+            }
+          }
+        } catch {
+          continue;
+        }
+      }
+      this.matchHistory = this.matchHistory.slice(-1000);
+    } catch (error: any) {
+      this.logHosting('ERROR', `Could not load match history: ${error.message}`);
+    }
+  }
+
+  private appendMatchEvent(event: Record<string, unknown>) {
+    try {
+      fs.appendFileSync(this.matchHistoryFile, JSON.stringify(event) + '\n', 'utf8');
+    } catch (error: any) {
+      this.logHosting('ERROR', `Could not persist match history: ${error.message}`);
+    }
+  }
+
+  private recordMatchStart(room: HostedRoom, gameId: number) {
+    const entry: MatchHistoryEntry = {
+      id: `${room.id}-${gameId}-${Date.now()}`,
+      roomId: room.id,
+      channel: room.channel,
+      gameTitle: room.gameTitle,
+      map: room.currentMap,
+      players: room.players.map((player) => player.nick),
+      gameId,
+      startedAt: new Date().toISOString(),
+    };
+    room.currentMatchId = entry.id;
+    this.matchHistory.push(entry);
+    if (this.matchHistory.length > 1000) this.matchHistory.shift();
+    this.appendMatchEvent({ type: 'started', match: entry });
+  }
+
+  private recordMatchEnd(room: HostedRoom, endReason: string) {
+    if (!room.currentMatchId) return;
+    const match = this.matchHistory.find((entry) => entry.id === room.currentMatchId);
+    if (!match) {
+      room.currentMatchId = undefined;
+      return;
+    }
+    match.endedAt = new Date().toISOString();
+    match.endReason = endReason;
+    this.appendMatchEvent({
+      type: 'ended',
+      matchId: match.id,
+      endedAt: match.endedAt,
+      endReason,
+    });
+    room.currentMatchId = undefined;
   }
 
   public getHostingLogs(limit = 200): HostingLogEntry[] {
@@ -959,6 +1054,7 @@ export class CnCNetAutoHostBot {
       this.roomSoloAiTimers.delete(roomId);
     }
 
+    this.recordMatchEnd(room, reason);
     this.sendRoomMessage(room, `[HOST] Red Alert 1 room is being closed: ${reason}`);
 
     if (this.state === 'REGISTERED') {
@@ -1071,6 +1167,7 @@ export class CnCNetAutoHostBot {
     room.status = 'PLAYING';
     room.launchedAt = new Date().toISOString();
     room.lastActivityAt = room.launchedAt;
+    this.recordMatchStart(room, gameId);
     this.broadcastGameAnnouncement(room);
     this.scheduleRoomRotation(room);
 
@@ -1533,6 +1630,9 @@ export class CnCNetAutoHostBot {
     } else if (cleanMsg === 'RETURN') {
       player.isInGame = false;
       player.isReady = false;
+      if (room.players.every((roomPlayer) => !roomPlayer.isInGame)) {
+        this.recordMatchEnd(room, 'all players returned to the lobby');
+      }
       this.logHosting('SYSTEM', `Detected ${senderNick} returning from the game.`, {
         roomId: room.id,
         channel: room.channel,
