@@ -88,6 +88,7 @@ export interface RoomPlayer {
   joinedAt: string;
   hostmask?: string;
   votedMap?: string;
+  wantsNextMap?: boolean;
   sideId?: number;
   colorId?: number;
   startingLocation?: number;
@@ -1685,6 +1686,27 @@ export class CnCNetAutoHostBot {
     this.roomReadyCountdownTimers.set(room.id, timer);
   }
 
+  private applyRoomMapChange(room: HostedRoom, map: string, reason: string) {
+    room.currentMap = map;
+    room.mapVotes = {};
+    for (const player of room.players) {
+      player.votedMap = undefined;
+      player.wantsNextMap = false;
+      player.isReady = false;
+    }
+    const readyTimer = this.roomReadyCountdownTimers.get(room.id);
+    if (readyTimer) {
+      clearTimeout(readyTimer);
+      this.roomReadyCountdownTimers.delete(room.id);
+    }
+    this.sendRoomMessage(room, reason);
+    this.sendRoomTopic(room);
+    this.sendRoomPlayerOptions(room);
+    this.sendRoomGameOptions(room);
+    this.broadcastGameAnnouncement(room);
+    this.evaluateRoomAutomation(room);
+  }
+
   private handlePlayerCommand(room: HostedRoom, senderNick: string, rawText: string) {
     const text = stripIrcFormatting(rawText);
     const parts = text.split(/\s+/);
@@ -1743,9 +1765,10 @@ export class CnCNetAutoHostBot {
         break;
       }
 
-      case '!vote': {
+      case '!vote':
+      case '!mappick': {
         if (!arg) {
-          this.sendRoomMessage(room, `[VOTE] Usage: !vote <Map Name or #> (e.g. !vote North by Northwest or !vote 2)`);
+          this.sendRoomMessage(room, `[VOTE] Usage: !mappick <map name> or !vote <map name or #>.`);
           return;
         }
 
@@ -1754,7 +1777,9 @@ export class CnCNetAutoHostBot {
         if (!isNaN(num) && num >= 1 && num <= room.mapPool.length) {
           matchedMap = room.mapPool[num - 1];
         } else {
-          matchedMap = room.mapPool.find((m) => m.toLowerCase().includes(arg.toLowerCase()));
+          const query = arg.replace(/^\[\d+\]\s*/i, '').toLowerCase();
+          matchedMap = room.mapPool.find((m) => m.toLowerCase() === arg.toLowerCase())
+            || room.mapPool.find((m) => m.replace(/^\[\d+\]\s*/i, '').toLowerCase().includes(query));
         }
 
         if (!matchedMap) {
@@ -1762,27 +1787,33 @@ export class CnCNetAutoHostBot {
           return;
         }
 
-        if (player) {
-          player.votedMap = matchedMap;
-        }
-
+        player.votedMap = matchedMap;
         room.mapVotes = {};
         for (const p of room.players) {
-          if (p.votedMap) {
-            room.mapVotes[p.votedMap] = (room.mapVotes[p.votedMap] || 0) + 1;
-          }
+          if (p.votedMap) room.mapVotes[p.votedMap] = (room.mapVotes[p.votedMap] || 0) + 1;
         }
 
-        const votesForThis = room.mapVotes[matchedMap] || 1;
-        this.sendRoomMessage(room, `[VOTE] ${senderNick} voted for '${matchedMap}' (${votesForThis} vote(s)).`);
+        const votesForThis = room.mapVotes[matchedMap] || 0;
+        const needed = Math.floor(room.players.length / 2) + 1;
+        this.sendRoomMessage(room, `[VOTE] ${senderNick} voted for '${matchedMap}' (${votesForThis}/${needed}).`);
 
-        if (votesForThis > room.players.length / 2) {
-          room.currentMap = matchedMap;
-          this.sendRoomMessage(room, `[MAP SWITCH] Majority voted! Map changed to: ${room.currentMap}`);
-          this.sendRoomTopic(room);
-          this.broadcastGameAnnouncement(room);
-          this.sendRoomGameOptions(room);
+        if (votesForThis >= needed) {
+          this.applyRoomMapChange(room, matchedMap, `[MAP SWITCH] Majority voted! Map changed to: ${matchedMap}. Ready up again.`);
         }
+        break;
+      }
+
+      case '!next': {
+        player.wantsNextMap = true;
+        const votes = room.players.filter((p) => p.wantsNextMap).length;
+        const needed = Math.floor(room.players.length / 2) + 1;
+        if (votes < needed) {
+          this.sendRoomMessage(room, `[VOTE] ${senderNick} wants a different map (${votes}/${needed}). Type !next to agree.`);
+          break;
+        }
+        const choices = room.mapPool.filter((map) => map !== room.currentMap);
+        const nextMap = choices.length ? choices[Math.floor(Math.random() * choices.length)] : room.currentMap;
+        if (nextMap) this.applyRoomMapChange(room, nextMap, `[MAP SWITCH] Vote passed! Next map: ${nextMap}. Ready up again.`);
         break;
       }
 
@@ -1809,7 +1840,7 @@ export class CnCNetAutoHostBot {
       case '!help':
       case '!commands':
       case '!h': {
-        this.sendRoomMessage(room, `[RA1 COMMANDS] !maps, !vote <map>, !status, !roll, !help`);
+        this.sendRoomMessage(room, `[RA1 COMMANDS] !maps, !vote <map>, !mappick <map>, !next, !status, !roll, !help`);
         break;
       }
     }
