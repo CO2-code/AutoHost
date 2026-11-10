@@ -266,6 +266,8 @@ export class CnCNetAutoHostBot {
   private logsDir: string;
   private hostingLogFile: string;
   private activityLogFile: string;
+  private eventHistoryFile: string;
+  private chatHistoryFile: string;
   private matchHistoryFile: string;
   private matchHistory: MatchHistoryEntry[] = [];
 
@@ -312,7 +314,11 @@ export class CnCNetAutoHostBot {
 
     this.hostingLogFile = path.join(this.logsDir, 'cncnet_hosting.log');
     this.activityLogFile = path.join(this.logsDir, 'cncnet_activity.log');
+    this.eventHistoryFile = path.join(this.logsDir, 'events.jsonl');
+    this.chatHistoryFile = path.join(this.logsDir, 'chat.jsonl');
     this.matchHistoryFile = path.join(this.logsDir, 'matches.jsonl');
+    this.loadHostingLogs();
+    this.loadChatLogs();
     this.loadMatchHistory();
 
     // Uptime counter
@@ -381,6 +387,42 @@ export class CnCNetAutoHostBot {
       ...entry,
       players: [...entry.players],
     }));
+  }
+
+  private loadHostingLogs() {
+    if (!fs.existsSync(this.eventHistoryFile)) return;
+    try {
+      const entries = fs.readFileSync(this.eventHistoryFile, 'utf8').split(/\r?\n/);
+      for (const line of entries) {
+        if (!line.trim()) continue;
+        try {
+          this.hostingLogs.push(JSON.parse(line) as HostingLogEntry);
+        } catch {
+          continue;
+        }
+      }
+      this.hostingLogs = this.hostingLogs.slice(-this.maxMemoryLogs);
+    } catch {
+      this.hostingLogs = [];
+    }
+  }
+
+  private loadChatLogs() {
+    if (!fs.existsSync(this.chatHistoryFile)) return;
+    try {
+      const entries = fs.readFileSync(this.chatHistoryFile, 'utf8').split(/\r?\n/);
+      for (const line of entries) {
+        if (!line.trim()) continue;
+        try {
+          this.chatLogs.push(JSON.parse(line) as ChatMessageEntry);
+        } catch {
+          continue;
+        }
+      }
+      this.chatLogs = this.chatLogs.slice(-5000);
+    } catch {
+      this.chatLogs = [];
+    }
   }
 
   private loadMatchHistory() {
@@ -474,6 +516,8 @@ export class CnCNetAutoHostBot {
     try {
       fs.writeFileSync(this.hostingLogFile, `--- RA1 LOG RESET: ${new Date().toISOString()} ---\n`, 'utf8');
       fs.writeFileSync(this.activityLogFile, `--- RA1 LOG RESET: ${new Date().toISOString()} ---\n`, 'utf8');
+      fs.writeFileSync(this.eventHistoryFile, '', 'utf8');
+      fs.writeFileSync(this.chatHistoryFile, '', 'utf8');
     } catch (err) {
       console.error('Error resetting logs:', err);
     }
@@ -2447,6 +2491,12 @@ export class CnCNetAutoHostBot {
     }
 
     try {
+      fs.appendFileSync(this.eventHistoryFile, JSON.stringify(entry) + '\n', 'utf8');
+    } catch {
+      // ignore
+    }
+
+    try {
       const line = `[${entry.timestamp}] [${entry.type}] ${entry.channel ? `[${entry.channel}] ` : ''}${entry.message} ${entry.details ? `(${entry.details})` : ''}\n`;
       fs.appendFileSync(this.hostingLogFile, line, 'utf8');
     } catch (err) {
@@ -2469,8 +2519,13 @@ export class CnCNetAutoHostBot {
 
   private recordChat(chat: ChatMessageEntry) {
     this.chatLogs.push(chat);
-    if (this.chatLogs.length > this.maxMemoryLogs) {
+    if (this.chatLogs.length > 5000) {
       this.chatLogs.shift();
+    }
+    try {
+      fs.appendFileSync(this.chatHistoryFile, JSON.stringify(chat) + '\n', 'utf8');
+    } catch {
+      // ignore
     }
   }
 
