@@ -1200,6 +1200,11 @@ export class CnCNetAutoHostBot {
     return room.players.filter((player) => !this.isSpectator(player)).length;
   }
 
+  private areAllHumanPlayersReady(room: HostedRoom): boolean {
+    const humans = room.players.filter((player) => !this.isSpectator(player));
+    return humans.length > 0 && humans.every((player) => player.isReady);
+  }
+
   private getRoomCapacity(room: HostedRoom): number {
     return room.maxPlayers + (room.maxSpectators ?? this.defaultMaxSpectators);
   }
@@ -1539,7 +1544,7 @@ export class CnCNetAutoHostBot {
     if (!aiFallback && this.getHumanPlayerCount(room) !== room.maxPlayers) {
       throw new Error(`Room needs ${room.maxPlayers} human players before launch.`);
     }
-    if (!room.players.length || !room.players.every((player) => player.isReady)) {
+    if (!this.areAllHumanPlayersReady(room)) {
       throw new Error('Every human player must be ready before launch.');
     }
     if (!this.validateRoomMapHash(room)) {
@@ -2366,7 +2371,7 @@ export class CnCNetAutoHostBot {
       }
 
       for (const player of [...room.players]) {
-        if (player.isReady || player.isInGame) {
+        if (this.isSpectator(player) || player.isReady || player.isInGame) {
           player.unreadySince = undefined;
           player.readyWarnedAt = undefined;
           continue;
@@ -2491,7 +2496,7 @@ export class CnCNetAutoHostBot {
     }
 
     const allReady = room.aiLevel !== undefined
-      ? room.skillLevel === 1 && room.maxPlayers === 2 && room.players.length === 1 && this.getHumanPlayerCount(room) === 1 && room.players.every((player) => player.isReady)
+      ? room.skillLevel === 1 && room.maxPlayers === 2 && room.players.length === 1 && this.getHumanPlayerCount(room) === 1 && this.areAllHumanPlayersReady(room)
       : this.getHumanPlayerCount(room) === room.maxPlayers && room.players.every((player) => player.isReady);
     if (!allReady) {
       if (readyTimer) {
@@ -2540,7 +2545,7 @@ export class CnCNetAutoHostBot {
       if (!activeRoom || activeRoom.status === 'PLAYING' || activeRoom.players.some((player) => player.isInGame)) return;
       if (
         (activeRoom.aiLevel !== undefined
-          ? activeRoom.skillLevel !== 1 || activeRoom.maxPlayers !== 2 || activeRoom.players.length !== 1 || this.getHumanPlayerCount(activeRoom) !== 1 || !activeRoom.players.every((player) => player.isReady)
+          ? activeRoom.skillLevel !== 1 || activeRoom.maxPlayers !== 2 || activeRoom.players.length !== 1 || this.getHumanPlayerCount(activeRoom) !== 1 || !this.areAllHumanPlayersReady(activeRoom)
           : this.getHumanPlayerCount(activeRoom) !== activeRoom.maxPlayers || !activeRoom.players.every((player) => player.isReady)) ||
         !this.validateRoomMapHash(activeRoom, false) ||
         !this.validateRoomFileHashes(activeRoom, false) ||
