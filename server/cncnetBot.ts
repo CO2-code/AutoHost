@@ -1322,6 +1322,9 @@ export class CnCNetAutoHostBot {
 
     if (updates.gameTitle) room.gameTitle = updates.gameTitle;
     if (updates.currentMap && updates.currentMap !== room.currentMap) {
+      if (!this.getMapSha1(updates.currentMap)) {
+        throw new Error(`No RA1 SHA-1 is configured for ${updates.currentMap}. Add it to CNCNET_RA1_MAP_HASHES before selecting it.`);
+      }
       const mapMaxPlayers = this.getMapMaxPlayers(updates.currentMap);
       if (mapMaxPlayers !== undefined && mapMaxPlayers < room.maxPlayers) {
         if (room.maxPlayers === 6 && room.configuredMaxPlayers === 4 && mapMaxPlayers >= 4) {
@@ -1513,6 +1516,9 @@ export class CnCNetAutoHostBot {
     if (!room.players.length || !room.players.every((player) => player.isReady)) {
       throw new Error('Every human player must be ready before launch.');
     }
+    if (!this.getMapSha1(room.currentMap)) {
+      throw new Error(`No RA1 SHA-1 is configured for ${room.currentMap}. Add it to CNCNET_RA1_MAP_HASHES before launching.`);
+    }
     if (!this.validateRoomFileHashes(room)) {
       throw new Error('Every player must complete file verification and use matching RA1 game files before launch.');
     }
@@ -1606,9 +1612,7 @@ export class CnCNetAutoHostBot {
   }
   private sendRoomGameOptions(room: HostedRoom) {
     const packedOptions = packRa1GameOptions(room.options);
-    const configuredMapName = process.env.CNCNET_RA1_MAP_NAME?.trim();
-    const isSampleMap = room.currentMap === '[2] Equal Opportunity' && (!configuredMapName || configuredMapName === '[2] Equal Opportunity');
-    const mapSha1 = process.env.CNCNET_RA1_MAP_SHA1?.trim() || KNOWN_MAP_SHA1S[room.currentMap] || (isSampleMap ? 'cd454a0a7849d65bbc4a78e49ad7fbae5323623d' : '');
+    const mapSha1 = this.getMapSha1(room.currentMap);
     const gameMode = KNOWN_MAP_SHA1S[room.currentMap] ? 'Popular' : (process.env.CNCNET_RA1_GAME_MODE?.trim() || 'Standard');
     const frameSendRate = '7';
     const maxAhead = process.env.CNCNET_RA1_MAX_AHEAD?.trim() || '0';
@@ -1652,11 +1656,7 @@ export class CnCNetAutoHostBot {
     if (this.state !== 'REGISTERED') return;
 
     const gameVersion = process.env.CNCNET_RA1_GAME_VERSION?.trim() || '0.1.2';
-    const configuredMapName = process.env.CNCNET_RA1_MAP_NAME?.trim();
-    const mapSha1 =
-      process.env.CNCNET_RA1_MAP_SHA1?.trim() ||
-      KNOWN_MAP_SHA1S[room.currentMap] ||
-      'cd454a0a7849d65bbc4a78e49ad7fbae5323623d';
+    const mapSha1 = this.getMapSha1(room.currentMap);
     if (!mapSha1) {
       this.logHosting('ERROR', `Game-list advertisement skipped: no SHA-1 configured for map '${room.currentMap}'. Set CNCNET_RA1_MAP_SHA1 to that map's exact hash.`);
       return;
@@ -1665,7 +1665,7 @@ export class CnCNetAutoHostBot {
     const flags = `${room.isLocked ? '1' : '0'}${room.password ? '1' : '0'}${closed ? '1' : '0'}00`;
     const players = room.players.map((player) => player.nick).join(',');
     const tunnel = '[DYN]';
-    const mapName = configuredMapName || room.currentMap;
+    const mapName = room.currentMap;
     const gameMode = KNOWN_MAP_SHA1S[room.currentMap] ? 'Popular' : (process.env.CNCNET_RA1_GAME_MODE?.trim() || 'Standard');
     const skill = String(Math.max(0, Math.min(3, room.skillLevel ?? 0)));
     const gameOptions = packRa1GameOptions(room.options);
@@ -2165,6 +2165,22 @@ export class CnCNetAutoHostBot {
     this.evaluateRoomAutomation(room);
   }
 
+  private getMapSha1(mapName: string): string {
+    const configuredMapName = process.env.CNCNET_RA1_MAP_NAME?.trim();
+    const configuredMapSha1 = process.env.CNCNET_RA1_MAP_SHA1?.trim();
+    if (configuredMapSha1 && (!configuredMapName || configuredMapName === mapName)) return configuredMapSha1;
+    try {
+      const configuredHashes = JSON.parse(process.env.CNCNET_RA1_MAP_HASHES || '{}') as Record<string, unknown>;
+      const configuredHash = configuredHashes[mapName];
+      if (typeof configuredHash === 'string' && configuredHash.trim()) return configuredHash.trim();
+    } catch {
+      this.logHosting('ERROR', 'CNCNET_RA1_MAP_HASHES is not valid JSON.');
+    }
+    return KNOWN_MAP_SHA1S[mapName] || (mapName === '[2] Equal Opportunity' && (!configuredMapName || configuredMapName === mapName)
+      ? 'cd454a0a7849d65bbc4a78e49ad7fbae5323623d'
+      : '');
+  }
+
   private getMapMaxPlayers(mapName: string): number | undefined {
     const match = mapName.match(/^\[(\d+)\]/);
     return match ? Number(match[1]) : undefined;
@@ -2184,9 +2200,10 @@ export class CnCNetAutoHostBot {
       if (room.maxPlayers === desiredMaxPlayers) continue;
 
       const exactMaps = room.mapPool.filter((map) => this.getMapMaxPlayers(map) === desiredMaxPlayers);
-      const compatibleMaps = exactMaps.length
+      const compatibleMaps = (exactMaps.length
         ? exactMaps
-        : room.mapPool.filter((map) => (this.getMapMaxPlayers(map) || 0) >= desiredMaxPlayers);
+        : room.mapPool.filter((map) => (this.getMapMaxPlayers(map) || 0) >= desiredMaxPlayers))
+        .filter((map) => this.getMapSha1(map).length > 0);
       if (desiredMaxPlayers === 6 && compatibleMaps.length === 0) continue;
       let selectedMap = room.currentMap;
       if (this.getMapMaxPlayers(selectedMap) !== desiredMaxPlayers && compatibleMaps.length > 0) {
@@ -2490,7 +2507,7 @@ export class CnCNetAutoHostBot {
   private selectNextRoomMap(room: HostedRoom): string | undefined {
     const compatibleMaps = room.mapPool.filter((map) => {
       const mapMaxPlayers = this.getMapMaxPlayers(map);
-      return mapMaxPlayers === undefined || mapMaxPlayers >= room.maxPlayers;
+      return this.getMapSha1(map).length > 0 && (mapMaxPlayers === undefined || mapMaxPlayers >= room.maxPlayers);
     });
     const recent = new Set(room.recentMaps || []);
     let choices = compatibleMaps.filter((map) => map !== room.currentMap && !recent.has(map));
@@ -2499,6 +2516,10 @@ export class CnCNetAutoHostBot {
   }
 
   private applyRoomMapChange(room: HostedRoom, map: string, reason: string) {
+    if (!this.getMapSha1(map)) {
+      this.sendRoomMessage(room, `[MAP] No RA1 SHA-1 is configured for ${map}. Add it to CNCNET_RA1_MAP_HASHES before selecting it.`);
+      return;
+    }
     const mapMaxPlayers = this.getMapMaxPlayers(map);
     if (mapMaxPlayers !== undefined && mapMaxPlayers < room.maxPlayers) {
       if (room.maxPlayers === 6 && room.configuredMaxPlayers === 4 && mapMaxPlayers >= 4) {
