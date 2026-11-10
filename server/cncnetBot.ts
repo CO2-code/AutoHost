@@ -2788,7 +2788,7 @@ export class CnCNetAutoHostBot {
     ).length;
     const needed = Math.min(this.votesNeeded, room.players.length);
     if (votes < needed) {
-      this.sendRoomMessage(room, `[VOTE] ${player.nick} votes for ${description} (${votes}/${needed}). Type !voteoption again to agree.`);
+      this.sendRoomMessage(room, `[VOTE] ${player.nick} votes for ${description} (${votes}/${needed}). Waiting for another player to agree with !voteoption.`);
       return;
     }
     const message = `[VOTE] Passed! ${description}. Players must ready up again.`;
