@@ -927,6 +927,74 @@ export class CnCNetAutoHostBot {
       return;
     }
 
+    if (command === 'NICK') {
+      const newNick = (trailing || params[0] || '').trim().replace(/^:/, '');
+      if (!newNick || newNick.toLowerCase() === senderNick.toLowerCase()) return;
+      const oldKey = senderNick.toLowerCase();
+      const newKey = newNick.toLowerCase();
+      if (this.lobbyUsers.has(oldKey)) {
+        this.lobbyUsers.delete(oldKey);
+        this.lobbyUsers.set(newKey, newNick);
+      }
+      if (this.lobbyNamesSnapshot?.has(oldKey)) {
+        this.lobbyNamesSnapshot.delete(oldKey);
+        this.lobbyNamesSnapshot.set(newKey, newNick);
+      }
+      if (this.lobbyNamesJoined.has(oldKey)) {
+        this.lobbyNamesJoined.delete(oldKey);
+        this.lobbyNamesJoined.set(newKey, newNick);
+      }
+      if (this.lobbyNamesSnapshot) {
+        this.lobbyNamesDepartures.delete(oldKey);
+        this.lobbyNamesDepartures.add(newKey);
+      }
+      for (const room of this.rooms.values()) {
+        const player = room.players.find((candidate) => candidate.nick.toLowerCase() === oldKey);
+        if (!player) continue;
+        player.nick = newNick;
+        for (const voters of Object.values(room.kickVotes || {})) {
+          for (let index = 0; index < voters.length; index++) {
+            if (voters[index].toLowerCase() === oldKey) voters[index] = newNick;
+          }
+        }
+        for (const voters of Object.values(room.optionVotes || {})) {
+          for (let index = 0; index < voters.length; index++) {
+            if (voters[index].toLowerCase() === oldKey) voters[index] = newNick;
+          }
+        }
+        const kickTargetVotes = room.kickVotes?.[oldKey];
+        if (kickTargetVotes && room.kickVotes) {
+          room.kickVotes[newKey] = kickTargetVotes;
+          delete room.kickVotes[oldKey];
+        }
+        if (room.currentMatchId) {
+          const match = this.matchHistory.find((entry) => entry.id === room.currentMatchId);
+          if (match) match.players = match.players.map((nick) => nick.toLowerCase() === oldKey ? newNick : nick);
+        }
+        if (room.status !== 'PLAYING') {
+          const renegotiationTimer = this.roomTunnelRenegotiationTimers.get(room.id);
+          if (renegotiationTimer) {
+            clearTimeout(renegotiationTimer);
+            this.roomTunnelRenegotiationTimers.delete(room.id);
+          }
+          room.tunnelFailureSince = undefined;
+          room.lastTunnelRenegotiationAt = undefined;
+          for (const roomPlayer of room.players) {
+            roomPlayer.tunnelNegotiationSuccesses = 0;
+            roomPlayer.tunnelNegotiationInProgress = 0;
+            roomPlayer.tunnelNegotiationFailures = 0;
+            roomPlayer.tunnelNegotiationReportedPeers = 0;
+            roomPlayer.tunnelNegotiationReportReceived = false;
+          }
+        }
+        this.sendRoomPlayerOptions(room);
+        this.broadcastGameAnnouncement(room);
+        this.evaluateRoomAutomation(room);
+        this.scheduleRoomTunnelRenegotiation(room);
+      }
+      return;
+    }
+
     // PART / QUIT / KICK - User left
     if (command === 'PART' || command === 'QUIT' || command === 'KICK') {
       let targetNick = senderNick;
