@@ -2253,7 +2253,7 @@ export class CnCNetAutoHostBot {
         this.handlePlayerLeave(room, player.nick, 'kicked (no spectator choice)');
       }
 
-      const aiFallback = room.aiLevel !== undefined && room.skillLevel === 1 && room.maxPlayers === 2 && room.players.length === 1;
+      const aiFallback = room.aiLevel !== undefined && room.skillLevel === 1 && room.maxPlayers === 2 && room.players.length === 1 && this.getHumanPlayerCount(room) === 1;
       const roomIsFull = this.isRoomFull(room) || aiFallback;
       const tunnelsReady = room.players.length <= 1 || room.players.every((player) =>
         player.tunnelNegotiationReportReceived &&
