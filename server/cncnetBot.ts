@@ -2041,10 +2041,13 @@ export class CnCNetAutoHostBot {
       const desiredMaxPlayers = expand ? 6 : 4;
       if (room.maxPlayers === desiredMaxPlayers) continue;
 
-      const compatibleMaps = room.mapPool.filter((map) => (this.getMapMaxPlayers(map) || 0) >= desiredMaxPlayers);
+      const exactMaps = room.mapPool.filter((map) => this.getMapMaxPlayers(map) === desiredMaxPlayers);
+      const compatibleMaps = exactMaps.length
+        ? exactMaps
+        : room.mapPool.filter((map) => (this.getMapMaxPlayers(map) || 0) >= desiredMaxPlayers);
       if (desiredMaxPlayers === 6 && compatibleMaps.length === 0) continue;
       let selectedMap = room.currentMap;
-      if ((this.getMapMaxPlayers(selectedMap) || 0) < desiredMaxPlayers) {
+      if (this.getMapMaxPlayers(selectedMap) !== desiredMaxPlayers && compatibleMaps.length > 0) {
         const recent = new Set(room.recentMaps || []);
         const preferred = compatibleMaps.filter((map) => !recent.has(map));
         const choices = preferred.length ? preferred : compatibleMaps;
@@ -2802,6 +2805,10 @@ export class CnCNetAutoHostBot {
 
     this.state = 'DISCONNECTED';
     this.connectedSince = null;
+    this.lobbyUsers.clear();
+    this.lobbyNamesSnapshot = null;
+    this.lobbyNamesDepartures.clear();
+    this.lobbyNamesJoined.clear();
 
     if (this.pingWatchdogTimer) {
       clearInterval(this.pingWatchdogTimer);
