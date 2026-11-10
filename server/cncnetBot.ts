@@ -115,6 +115,8 @@ export interface HostedRoom {
   lobbyChannel: string;
   password?: string;
   maxPlayers: number;
+  configuredMaxPlayers?: number;
+  autoThreeVsThreeActive?: boolean;
   maxSpectators?: number;
   humanPlayerCount?: number;
   spectatorCount?: number;
@@ -270,6 +272,15 @@ export class CnCNetAutoHostBot {
     ? Math.max(0, Math.floor(Number(process.env.CNCNET_RA1_VOTES_NEEDED)))
     : 2;
   private readonly requireBalancedTeams = process.env.CNCNET_RA1_REQUIRE_BALANCED_TEAMS?.toLowerCase() === 'true';
+  private readonly autoThreeVsThreeEnabled = process.env.CNCNET_RA1_AUTO_3V3?.toLowerCase() === 'true';
+  private readonly autoThreeVsThreeLobbyUsers = Number.isFinite(Number(process.env.CNCNET_RA1_AUTO_3V3_LOBBY_USERS))
+    ? Math.max(1, Math.floor(Number(process.env.CNCNET_RA1_AUTO_3V3_LOBBY_USERS)))
+    : 550;
+  private lobbyUsers = new Map<string, string>();
+  private lobbyNamesSnapshot: Map<string, string> | null = null;
+  private lobbyNamesDepartures = new Set<string>();
+  private lobbyNamesJoined = new Map<string, string>();
+  private lastAutoSizeCheckAt = 0;
 
   // Logs and Chat History
   private hostingLogs: HostingLogEntry[] = [];
@@ -342,6 +353,7 @@ export class CnCNetAutoHostBot {
         }
       }
       this.checkUnreadyPlayers();
+      this.updateDynamicRoomSizes();
     }, 1000);
 
     this.logSystem(`CnCNet RA1 IRC room bot initialized. Game-list channel: ${this.config.announcementChannel}`);
@@ -369,6 +381,7 @@ export class CnCNetAutoHostBot {
       reconnectAttempts: this.reconnectAttempts,
       nextReconnectAt: this.nextReconnectAt ? this.nextReconnectAt.toISOString() : null,
       stats: { ...this.stats, totalMatches: this.matchHistory.length },
+      lobbyUserCount: this.lobbyUsers.size,
       rooms: this.getRoomSnapshots(),
       gameDefinition: RA1_DEFINITION,
     };
@@ -379,6 +392,7 @@ export class CnCNetAutoHostBot {
       const humanPlayerCount = this.getHumanPlayerCount(room);
       return {
         ...room,
+        autoThreeVsThreeActive: (room.configuredMaxPlayers ?? room.maxPlayers) === 4 && room.maxPlayers === 6,
         humanPlayerCount,
         spectatorCount: room.players.length - humanPlayerCount,
         capacity: this.getRoomCapacity(room),
@@ -1093,6 +1107,7 @@ export class CnCNetAutoHostBot {
       lobbyChannel: RA1_DEFINITION.lobbyChannel,
       password: options.password || undefined,
       maxPlayers: options.maxPlayers || RA1_DEFINITION.defaultMaxPlayers,
+      configuredMaxPlayers: options.maxPlayers || RA1_DEFINITION.defaultMaxPlayers,
       maxSpectators: options.maxSpectators === undefined
         ? this.defaultMaxSpectators
         : Math.max(0, Math.min(4, Math.floor(Number(options.maxSpectators) || 0))),
@@ -1199,7 +1214,10 @@ export class CnCNetAutoHostBot {
       }
       this.sendRoomMessage(room, `[MAP] Map changed to: ${room.currentMap}. Ready up again.`);
     }
-    if (updates.maxPlayers) room.maxPlayers = updates.maxPlayers;
+    if (updates.maxPlayers) {
+      room.maxPlayers = updates.maxPlayers;
+      room.configuredMaxPlayers = updates.maxPlayers;
+    }
     if (updates.maxSpectators !== undefined) room.maxSpectators = Math.max(0, Math.min(4, Math.floor(Number(updates.maxSpectators) || 0)));
     if (updates.maxPlayers !== undefined || updates.maxSpectators !== undefined) {
       this.sendRaw(`MODE ${room.channel} +l ${this.getRoomCapacity(room) + 1}`);
@@ -1888,6 +1906,7 @@ export class CnCNetAutoHostBot {
         channel: `#cncnet-ra-game${suffix}`,
         gameTitle: activeRoom.gameTitle,
         maxPlayers: activeRoom.maxPlayers,
+        configuredMaxPlayers: activeRoom.configuredMaxPlayers,
         maxSpectators: activeRoom.maxSpectators,
         skillLevel: activeRoom.skillLevel,
         currentMap: activeRoom.currentMap,
@@ -1954,6 +1973,61 @@ export class CnCNetAutoHostBot {
     }, this.roomTunnelRenegotiationDelayMs);
 
     this.roomTunnelRenegotiationTimers.set(room.id, timer);
+  }
+
+  private getMapMaxPlayers(mapName: string): number | undefined {
+    const match = mapName.match(/^\[(\d+)\]/);
+    return match ? Number(match[1]) : undefined;
+  }
+
+  private updateDynamicRoomSizes() {
+    if (!this.autoThreeVsThreeEnabled) return;
+    const now = Date.now();
+    if (now - this.lastAutoSizeCheckAt < 30000) return;
+    this.lastAutoSizeCheckAt = now;
+    const expand = this.lobbyUsers.size >= this.autoThreeVsThreeLobbyUsers;
+
+    for (const room of this.rooms.values()) {
+      const configuredMaxPlayers = room.configuredMaxPlayers ?? room.maxPlayers;
+      if (configuredMaxPlayers !== 4 || room.players.length > 0 || room.status === 'PLAYING') continue;
+      const desiredMaxPlayers = expand ? 6 : 4;
+      if (room.maxPlayers === desiredMaxPlayers) continue;
+
+      const compatibleMaps = room.mapPool.filter((map) => (this.getMapMaxPlayers(map) || 0) >= desiredMaxPlayers);
+      if (desiredMaxPlayers === 6 && compatibleMaps.length === 0) continue;
+      let selectedMap = room.currentMap;
+      if ((this.getMapMaxPlayers(selectedMap) || 0) < desiredMaxPlayers) {
+        const recent = new Set(room.recentMaps || []);
+        const preferred = compatibleMaps.filter((map) => !recent.has(map));
+        const choices = preferred.length ? preferred : compatibleMaps;
+        selectedMap = choices[Math.floor(Math.random() * choices.length)] || selectedMap;
+      }
+
+      if (room.currentMap !== selectedMap) {
+        room.recentMaps ||= [];
+        room.recentMaps.push(room.currentMap);
+        room.recentMaps = room.recentMaps.slice(-5);
+        room.currentMap = selectedMap;
+      }
+      room.maxPlayers = desiredMaxPlayers;
+      room.forceRandomStarts = false;
+      room.mapVotes = {};
+      room.fullCountdownShown = false;
+      room.gameTitle = desiredMaxPlayers === 6
+        ? room.gameTitle.replace(/2v2/ig, '3v3')
+        : room.gameTitle.replace(/3v3/ig, '2v2');
+      room.lastActivityAt = new Date(now).toISOString();
+      this.sendRaw(`MODE ${room.channel} +l ${this.getRoomCapacity(room) + 1}`);
+      this.sendRoomLobbySettings(room);
+      this.sendRoomPlayerExtraOptions(room);
+      this.sendRoomGameOptions(room);
+      this.sendRoomTopic(room);
+      this.broadcastGameAnnouncement(room);
+      this.logHosting('SYSTEM', `Automatically resized ${room.channel} to ${desiredMaxPlayers === 6 ? '3v3' : '2v2'} based on ${this.lobbyUsers.size} RA1 lobby users.`, {
+        roomId: room.id,
+        channel: room.channel,
+      });
+    }
   }
 
   private checkUnreadyPlayers() {
