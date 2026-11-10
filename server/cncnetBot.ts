@@ -346,14 +346,27 @@ export class CnCNetAutoHostBot {
       connectedSince: this.connectedSince ? this.connectedSince.toISOString() : null,
       reconnectAttempts: this.reconnectAttempts,
       nextReconnectAt: this.nextReconnectAt ? this.nextReconnectAt.toISOString() : null,
-      stats: { ...this.stats },
-      rooms: Array.from(this.rooms.values()),
+      stats: { ...this.stats, totalMatches: this.matchHistory.length },
+      rooms: this.getRoomSnapshots(),
       gameDefinition: RA1_DEFINITION,
     };
   }
 
+  private getRoomSnapshots(): HostedRoom[] {
+    return Array.from(this.rooms.values()).map((room) => {
+      const humanPlayerCount = this.getHumanPlayerCount(room);
+      return {
+        ...room,
+        humanPlayerCount,
+        spectatorCount: room.players.length - humanPlayerCount,
+        capacity: this.getRoomCapacity(room),
+        players: room.players.map((player) => ({ ...player })),
+      };
+    });
+  }
+
   public getRooms(): HostedRoom[] {
-    return Array.from(this.rooms.values());
+    return this.getRoomSnapshots();
   }
 
   public getRoom(id: string): HostedRoom | undefined {
