@@ -138,6 +138,7 @@ export interface HostedRoom {
   tunnelLaunchBlocked?: boolean;
   fileHashLaunchBlocked?: boolean;
   fileHashMismatchReported?: string;
+  fullCountdownShown?: boolean;
   lastPlayerOptionNoticeAt?: number;
   lastTeamNoticeAt?: number;
   players: RoomPlayer[];
@@ -248,6 +249,7 @@ export class CnCNetAutoHostBot {
   private readonly roomTunnelRenegotiationDelayMs = 45000;
   private readonly roomFullLockDelayMs = 10000;
   private readonly readyLaunchCountdownMs = 15000;
+  private readonly quickStartCountdownMs = 3000;
   private readonly soloAiFallbackDelayMs = 180000;
   private readonly readyGraceMs = Number.isFinite(Number(process.env.CNCNET_RA1_READY_GRACE_SECONDS))
     ? Math.max(0, Number(process.env.CNCNET_RA1_READY_GRACE_SECONDS)) * 1000
@@ -1171,6 +1173,7 @@ export class CnCNetAutoHostBot {
       room.recentMaps = room.recentMaps.slice(-5);
       room.currentMap = updates.currentMap;
       room.mapVotes = {};
+      room.fullCountdownShown = false;
       for (const player of room.players) player.isReady = false;
       const readyTimer = this.roomReadyCountdownTimers.get(room.id);
       if (readyTimer) {
@@ -1543,6 +1546,7 @@ export class CnCNetAutoHostBot {
     };
 
     room.players.push(player);
+    room.fullCountdownShown = false;
     room.fileHashLaunchBlocked = false;
     room.fileHashMismatchReported = undefined;
     room.lastActivityAt = new Date().toISOString();
@@ -1634,6 +1638,7 @@ export class CnCNetAutoHostBot {
     });
 
     if (room.players.length !== initialLen) {
+      room.fullCountdownShown = false;
       room.lastActivityAt = new Date().toISOString();
       room.tunnelLaunchBlocked = false;
       const renegotiationTimer = this.roomTunnelRenegotiationTimers.get(room.id);
@@ -2150,7 +2155,11 @@ export class CnCNetAutoHostBot {
 
     if (readyTimer) return;
 
-    this.sendRoomMessage(room, '[AUTO-HOST] All players are ready and connected! Launching in 15 seconds.');
+    const countdownMs = room.fullCountdownShown ? this.quickStartCountdownMs : this.readyLaunchCountdownMs;
+    room.fullCountdownShown = true;
+    this.sendRoomMessage(room, countdownMs === this.readyLaunchCountdownMs
+      ? '[AUTO-HOST] All players are ready, verified, and connected! Launching in 15 seconds.'
+      : '[AUTO-HOST] Everyone is ready again. Launching in 3 seconds.');
     const timer = setTimeout(() => {
       this.roomReadyCountdownTimers.delete(room.id);
       const activeRoom = this.rooms.get(room.id);
@@ -2182,7 +2191,7 @@ export class CnCNetAutoHostBot {
           channel: activeRoom.channel,
         });
       }
-    }, this.readyLaunchCountdownMs);
+    }, countdownMs);
 
     this.roomReadyCountdownTimers.set(room.id, timer);
   }
@@ -2202,6 +2211,7 @@ export class CnCNetAutoHostBot {
     }
     room.currentMap = map;
     room.mapVotes = {};
+    room.fullCountdownShown = false;
     for (const player of room.players) {
       player.votedMap = undefined;
       player.wantsNextMap = false;
@@ -2238,6 +2248,7 @@ export class CnCNetAutoHostBot {
       this.roomReadyCountdownTimers.delete(room.id);
     }
     room.optionVotes = {};
+    room.fullCountdownShown = false;
     this.sendRoomMessage(room, message);
     this.sendRoomGameOptions(room);
     this.sendRoomPlayerOptions(room);
