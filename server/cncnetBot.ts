@@ -85,6 +85,7 @@ export interface RoomPlayer {
   isReady: boolean;
   isHost: boolean;
   isInGame?: boolean;
+  fileHash?: string;
   joinedAt: string;
   hostmask?: string;
   mustSpectateBy?: number;
@@ -134,6 +135,8 @@ export interface HostedRoom {
   isLocked: boolean;
   aiLevel?: number;
   tunnelLaunchBlocked?: boolean;
+  fileHashLaunchBlocked?: boolean;
+  fileHashMismatchReported?: string;
   players: RoomPlayer[];
   mapVotes: Record<string, number>;
   kickVotes?: Record<string, string[]>;
@@ -1211,6 +1214,44 @@ export class CnCNetAutoHostBot {
     return room;
   }
 
+  private validateRoomFileHashes(room: HostedRoom, announce = true): boolean {
+    const missing = room.players.filter((player) => !player.fileHash);
+    if (missing.length > 0) {
+      if (announce && !room.fileHashLaunchBlocked) {
+        room.fileHashLaunchBlocked = true;
+        this.sendRoomMessage(room, `[AUTO-HOST] Waiting for RA1 file verification from: ${missing.map((player) => player.nick).join(', ')}.`);
+      }
+      return false;
+    }
+
+    const counts = new Map<string, number>();
+    for (const player of room.players) {
+      const hash = player.fileHash!.toLowerCase();
+      counts.set(hash, (counts.get(hash) || 0) + 1);
+    }
+    if (counts.size > 1) {
+      const mismatchKey = Array.from(counts.keys()).sort().join('|');
+      if (announce && room.fileHashMismatchReported !== mismatchKey) {
+        room.fileHashLaunchBlocked = true;
+        room.fileHashMismatchReported = mismatchKey;
+        const majority = Array.from(counts.entries()).sort((a, b) => b[1] - a[1])[0];
+        this.sendRoomMessage(room, '[AUTO-HOST] Players have different RA1 game files. Launch is blocked until everyone uses matching files.');
+        if (majority && majority[1] > room.players.length / 2) {
+          for (const player of room.players) {
+            if (player.fileHash!.toLowerCase() !== majority[0]) {
+              this.sendRaw(`NOTICE ${room.channel} :\x01MM ${player.nick}\x01`);
+            }
+          }
+        }
+      }
+      return false;
+    }
+
+    room.fileHashLaunchBlocked = false;
+    room.fileHashMismatchReported = undefined;
+    return true;
+  }
+
   public launchRoom(roomId: string): HostedRoom {
     const room = this.rooms.get(roomId);
     if (!room) throw new Error('Room not found');
@@ -1223,6 +1264,9 @@ export class CnCNetAutoHostBot {
     }
     if (!room.players.length || !room.players.every((player) => player.isReady)) {
       throw new Error('Every human player must be ready before launch.');
+    }
+    if (!this.validateRoomFileHashes(room)) {
+      throw new Error('Every player must complete file verification and use matching RA1 game files before launch.');
     }
     if (room.players.length > 1 && !room.players.every((player) =>
       player.tunnelNegotiationReportReceived &&
@@ -1725,11 +1769,15 @@ export class CnCNetAutoHostBot {
       });
     } else if (cleanMsg.startsWith('FHSH ')) {
       const hash = cleanMsg.substring(5).trim();
-      this.logHosting('SYSTEM', `Player '${senderNick}' synchronized map hash ${hash} in ${room.channel}`, {
+      if (!hash || hash.length > 128) return;
+      player.fileHash = hash;
+      this.validateRoomFileHashes(room);
+      this.logHosting('SYSTEM', `Player '${senderNick}' completed RA1 file verification with hash ${hash} in ${room.channel}`, {
         roomId: room.id,
         channel: room.channel,
         nick: senderNick,
       });
+      this.evaluateRoomAutomation(room);
     }
   }
   private scheduleRoomRotation(room: HostedRoom) {
@@ -1998,6 +2046,14 @@ export class CnCNetAutoHostBot {
       return;
     }
 
+    if (!this.validateRoomFileHashes(room)) {
+      if (readyTimer) {
+        clearTimeout(readyTimer);
+        this.roomReadyCountdownTimers.delete(room.id);
+      }
+      return;
+    }
+
     if (room.players.length > 1 && !room.players.every((player) =>
       player.tunnelNegotiationReportReceived &&
       player.tunnelNegotiationReportedPeers === room.players.length - 1 &&
@@ -2026,6 +2082,7 @@ export class CnCNetAutoHostBot {
         (activeRoom.aiLevel !== undefined
           ? activeRoom.skillLevel !== 1 || activeRoom.maxPlayers !== 2 || activeRoom.players.length !== 1 || !activeRoom.players.every((player) => player.isReady)
           : this.getHumanPlayerCount(activeRoom) !== activeRoom.maxPlayers || !activeRoom.players.every((player) => player.isReady)) ||
+        !this.validateRoomFileHashes(activeRoom, false) ||
         (activeRoom.players.length > 1 && !activeRoom.players.every((player) =>
           player.tunnelNegotiationReportReceived &&
           player.tunnelNegotiationReportedPeers === activeRoom.players.length - 1 &&
