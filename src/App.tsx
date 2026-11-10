@@ -64,6 +64,7 @@ export interface RoomPlayer {
   votedMap?: string;
   sideId?: number;
   mustSpectateBy?: number;
+  fileHash?: string;
 }
 
 export interface HostedRoom {
@@ -1339,6 +1340,9 @@ Create your first IRC room. It will be advertised in #cncnet-ra-games.
                                         Waiting...
                                       </span>
                                     )}
+                                    <span className={`ml-1 text-[9px] font-semibold ${player.fileHash ? 'text-emerald-400' : 'text-amber-400'}`}>
+                                      {player.fileHash ? 'FILES OK' : 'VERIFYING'}
+                                    </span>
                                   </td>
                                   <td className="py-2 px-3 text-slate-400 text-[11px]">
                                     {player.votedMap || '—'}
