@@ -461,6 +461,19 @@ export class CnCNetAutoHostBot {
         }
       }
       this.matchHistory = this.matchHistory.slice(-1000);
+      const restartTime = new Date().toISOString();
+      for (const match of this.matchHistory) {
+        if (match.endedAt) continue;
+        match.endedAt = restartTime;
+        match.endReason = 'host process restarted before match return was observed';
+        this.appendMatchEvent({
+          type: 'ended',
+          matchId: match.id,
+          endedAt: restartTime,
+          endReason: match.endReason,
+          endPlayers: [],
+        });
+      }
     } catch (error: any) {
       this.logHosting('ERROR', `Could not load match history: ${error.message}`);
     }
