@@ -2233,8 +2233,10 @@ export class CnCNetAutoHostBot {
           }
           room.currentMap = nextMap;
           room.mapVotes = {};
+          room.forceRandomStarts = false;
           room.lastActivityAt = new Date(now).toISOString();
           this.sendRoomTopic(room);
+          this.sendRoomPlayerExtraOptions(room);
           this.sendRoomGameOptions(room);
           this.broadcastGameAnnouncement(room);
           this.logHosting('MAP_CHANGED', `Rotated idle RA1 room to map '${nextMap}'.`, {
