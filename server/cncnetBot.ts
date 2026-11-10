@@ -2203,7 +2203,8 @@ export class CnCNetAutoHostBot {
     if (configuredMapSha1 && /^[a-f0-9]{40}$/i.test(configuredMapSha1) && (!configuredMapName || configuredMapName === mapName)) return configuredMapSha1;
     try {
       const configuredHashes = JSON.parse(process.env.CNCNET_RA1_MAP_HASHES || '{}') as Record<string, unknown>;
-      const configuredHash = configuredHashes[mapName];
+      const configuredEntry = Object.entries(configuredHashes).find(([name]) => name.toLowerCase() === mapName.toLowerCase());
+      const configuredHash = configuredEntry?.[1];
       if (typeof configuredHash === 'string' && /^[a-f0-9]{40}$/i.test(configuredHash.trim())) return configuredHash.trim();
     } catch {
       this.logHosting('ERROR', 'CNCNET_RA1_MAP_HASHES is not valid JSON.');
@@ -2220,7 +2221,8 @@ export class CnCNetAutoHostBot {
     if (configuredMapName === mapName && configuredMapSha1 && /^[a-f0-9]{40}$/i.test(configuredMapSha1)) return true;
     try {
       const configuredHashes = JSON.parse(process.env.CNCNET_RA1_MAP_HASHES || '{}') as Record<string, unknown>;
-      const configuredHash = configuredHashes[mapName];
+      const configuredEntry = Object.entries(configuredHashes).find(([name]) => name.toLowerCase() === mapName.toLowerCase());
+      const configuredHash = configuredEntry?.[1];
       return typeof configuredHash === 'string' && /^[a-f0-9]{40}$/i.test(configuredHash.trim());
     } catch {
       return false;
