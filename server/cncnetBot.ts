@@ -1656,6 +1656,13 @@ export class CnCNetAutoHostBot {
       this.sendRoomMessage(room, `[AUTO-HOST] Player slots are full. ${nick}, choose Spectator in the side list within 30 seconds or you will be removed.`);
     }
     room.tunnelLaunchBlocked = false;
+    const existingRenegotiationTimer = this.roomTunnelRenegotiationTimers.get(room.id);
+    if (existingRenegotiationTimer) {
+      clearTimeout(existingRenegotiationTimer);
+      this.roomTunnelRenegotiationTimers.delete(room.id);
+    }
+    room.tunnelFailureSince = undefined;
+    room.lastTunnelRenegotiationAt = undefined;
     for (const roomPlayer of room.players) {
       roomPlayer.tunnelNegotiationSuccesses = 0;
       roomPlayer.tunnelNegotiationInProgress = 0;
@@ -1747,6 +1754,8 @@ export class CnCNetAutoHostBot {
         clearTimeout(renegotiationTimer);
         this.roomTunnelRenegotiationTimers.delete(room.id);
       }
+      room.tunnelFailureSince = undefined;
+      room.lastTunnelRenegotiationAt = undefined;
       for (const roomPlayer of room.players) {
         roomPlayer.tunnelNegotiationSuccesses = 0;
         roomPlayer.tunnelNegotiationInProgress = 0;
@@ -2056,6 +2065,7 @@ export class CnCNetAutoHostBot {
       channel: room.channel,
       details: participants.join(','),
     });
+    this.evaluateRoomAutomation(room);
   }
 
   private getMapMaxPlayers(mapName: string): number | undefined {
