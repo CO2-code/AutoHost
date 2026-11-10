@@ -243,6 +243,16 @@ app.get('/api/logs/hosting', (req, res) => {
   res.json({ success: true, logs });
 });
 
+app.get('/api/matches', (req, res) => {
+  const requestedLimit = req.query.limit ? parseInt(req.query.limit as string, 10) : 100;
+  const limit = Number.isFinite(requestedLimit) ? Math.max(1, Math.min(1000, requestedLimit)) : 100;
+  const matches = allBots()
+    .flatMap((bot) => bot.getMatchHistory(limit))
+    .sort((a, b) => b.startedAt.localeCompare(a.startedAt))
+    .slice(0, limit);
+  res.json({ success: true, matches });
+});
+
 app.get('/api/logs/chat', (req, res) => {
   const channel = req.query.channel as string | undefined;
   const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 200;
