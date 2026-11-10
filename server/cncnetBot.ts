@@ -2247,12 +2247,17 @@ export class CnCNetAutoHostBot {
       const desiredMaxPlayers = expand ? 6 : 4;
       if (room.maxPlayers === desiredMaxPlayers) continue;
 
-      const exactMaps = room.mapPool.filter((map) => this.getMapMaxPlayers(map) === desiredMaxPlayers);
-      const compatibleMaps = (exactMaps.length
+      const exactMaps = room.mapPool.filter((map) =>
+        this.getMapMaxPlayers(map) === desiredMaxPlayers && this.hasExplicitMapSha1(map)
+      );
+      const compatibleMaps = exactMaps.length
         ? exactMaps
-        : room.mapPool.filter((map) => (this.getMapMaxPlayers(map) || 0) >= desiredMaxPlayers))
-        .filter((map) => this.hasExplicitMapSha1(map));
+        : room.mapPool.filter((map) =>
+          (this.getMapMaxPlayers(map) || 0) >= desiredMaxPlayers && this.hasExplicitMapSha1(map)
+        );
       if (desiredMaxPlayers === 6 && compatibleMaps.length === 0) continue;
+      if (desiredMaxPlayers === 4 && (this.getMapMaxPlayers(room.currentMap) || 0) < 4 &&
+        this.getMapMaxPlayers(room.currentMap) !== undefined && compatibleMaps.length === 0) continue;
       let selectedMap = room.currentMap;
       if (this.getMapMaxPlayers(selectedMap) !== desiredMaxPlayers && compatibleMaps.length > 0) {
         const recent = new Set(room.recentMaps || []);
