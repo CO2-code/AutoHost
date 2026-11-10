@@ -137,6 +137,7 @@ export interface HostedRoom {
   tunnelLaunchBlocked?: boolean;
   fileHashLaunchBlocked?: boolean;
   fileHashMismatchReported?: string;
+  lastPlayerOptionNoticeAt?: number;
   players: RoomPlayer[];
   mapVotes: Record<string, number>;
   kickVotes?: Record<string, string[]>;
@@ -1256,6 +1257,24 @@ export class CnCNetAutoHostBot {
     return true;
   }
 
+  private validateRoomPlayerOptions(room: HostedRoom, announce = true): boolean {
+    const duplicateColors = room.players.some((player, index) =>
+      (player.colorId || 0) > 0 &&
+      room.players.some((other, otherIndex) => otherIndex !== index && other.colorId === player.colorId)
+    );
+    if (!duplicateColors) {
+      room.lastPlayerOptionNoticeAt = undefined;
+      return true;
+    }
+    const now = Date.now();
+    if (announce && (!room.lastPlayerOptionNoticeAt || now - room.lastPlayerOptionNoticeAt >= 20000)) {
+      room.lastPlayerOptionNoticeAt = now;
+      this.sendRaw(`NOTICE ${room.channel} :\x01CLRS\x01`);
+      this.sendRoomMessage(room, '[AUTO-HOST] Two or more players selected the same color. Choose different colors before launch.');
+    }
+    return false;
+  }
+
   public launchRoom(roomId: string): HostedRoom {
     const room = this.rooms.get(roomId);
     if (!room) throw new Error('Room not found');
@@ -1271,6 +1290,9 @@ export class CnCNetAutoHostBot {
     }
     if (!this.validateRoomFileHashes(room)) {
       throw new Error('Every player must complete file verification and use matching RA1 game files before launch.');
+    }
+    if (!this.validateRoomPlayerOptions(room)) {
+      throw new Error('Players must choose different colors before launch.');
     }
     if (room.players.length > 1 && !room.players.every((player) =>
       player.tunnelNegotiationReportReceived &&
@@ -2052,7 +2074,7 @@ export class CnCNetAutoHostBot {
       return;
     }
 
-    if (!this.validateRoomFileHashes(room)) {
+    if (!this.validateRoomFileHashes(room) || !this.validateRoomPlayerOptions(room)) {
       if (readyTimer) {
         clearTimeout(readyTimer);
         this.roomReadyCountdownTimers.delete(room.id);
@@ -2089,6 +2111,7 @@ export class CnCNetAutoHostBot {
           ? activeRoom.skillLevel !== 1 || activeRoom.maxPlayers !== 2 || activeRoom.players.length !== 1 || !activeRoom.players.every((player) => player.isReady)
           : this.getHumanPlayerCount(activeRoom) !== activeRoom.maxPlayers || !activeRoom.players.every((player) => player.isReady)) ||
         !this.validateRoomFileHashes(activeRoom, false) ||
+        !this.validateRoomPlayerOptions(activeRoom, false) ||
         (activeRoom.players.length > 1 && !activeRoom.players.every((player) =>
           player.tunnelNegotiationReportReceived &&
           player.tunnelNegotiationReportedPeers === activeRoom.players.length - 1 &&
