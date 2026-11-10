@@ -2497,7 +2497,7 @@ export class CnCNetAutoHostBot {
 
     const allReady = room.aiLevel !== undefined
       ? room.skillLevel === 1 && room.maxPlayers === 2 && room.players.length === 1 && this.getHumanPlayerCount(room) === 1 && this.areAllHumanPlayersReady(room)
-      : this.getHumanPlayerCount(room) === room.maxPlayers && room.players.every((player) => player.isReady);
+      : this.getHumanPlayerCount(room) === room.maxPlayers && this.areAllHumanPlayersReady(room);
     if (!allReady) {
       if (readyTimer) {
         clearTimeout(readyTimer);
@@ -2546,7 +2546,7 @@ export class CnCNetAutoHostBot {
       if (
         (activeRoom.aiLevel !== undefined
           ? activeRoom.skillLevel !== 1 || activeRoom.maxPlayers !== 2 || activeRoom.players.length !== 1 || this.getHumanPlayerCount(activeRoom) !== 1 || !this.areAllHumanPlayersReady(activeRoom)
-          : this.getHumanPlayerCount(activeRoom) !== activeRoom.maxPlayers || !activeRoom.players.every((player) => player.isReady)) ||
+          : this.getHumanPlayerCount(activeRoom) !== activeRoom.maxPlayers || !this.areAllHumanPlayersReady(activeRoom)) ||
         !this.validateRoomMapHash(activeRoom, false) ||
         !this.validateRoomFileHashes(activeRoom, false) ||
         !this.validateRoomMapCapacity(activeRoom, false) ||
