@@ -1495,7 +1495,7 @@ export class CnCNetAutoHostBot {
     if (this.state !== 'REGISTERED') throw new Error('Bot must be connected to CnCNet IRC before launching a room.');
     if (!room.isLocked) throw new Error('Lock the room before launching it.');
     if (room.status === 'PLAYING' || room.players.some((player) => player.isInGame)) throw new Error('This room has already been launched.');
-    const aiFallback = room.aiLevel !== undefined && room.skillLevel === 1 && room.maxPlayers === 2 && room.players.length === 1;
+    const aiFallback = room.aiLevel !== undefined && room.skillLevel === 1 && room.maxPlayers === 2 && room.players.length === 1 && this.getHumanPlayerCount(room) === 1;
     if (!aiFallback && this.getHumanPlayerCount(room) !== room.maxPlayers) {
       throw new Error(`Room needs ${room.maxPlayers} human players before launch.`);
     }
@@ -2308,7 +2308,7 @@ export class CnCNetAutoHostBot {
     if (room.status === 'PLAYING' || room.players.some((player) => player.isInGame)) return;
 
     const soloAiTimer = this.roomSoloAiTimers.get(room.id);
-    if (room.skillLevel !== 1 || room.maxPlayers !== 2 || room.players.length !== 1 || room.aiLevel !== undefined) {
+    if (room.skillLevel !== 1 || room.maxPlayers !== 2 || room.players.length !== 1 || this.getHumanPlayerCount(room) !== 1 || room.aiLevel !== undefined) {
       if (soloAiTimer) {
         clearTimeout(soloAiTimer);
         this.roomSoloAiTimers.delete(room.id);
@@ -2324,6 +2324,7 @@ export class CnCNetAutoHostBot {
           activeRoom.skillLevel !== 1 ||
           activeRoom.maxPlayers !== 2 ||
           activeRoom.players.length !== 1 ||
+          this.getHumanPlayerCount(activeRoom) !== 1 ||
           activeRoom.aiLevel !== undefined ||
           this.state !== 'REGISTERED'
         ) return;
@@ -2353,7 +2354,7 @@ export class CnCNetAutoHostBot {
     const readyTimer = this.roomReadyCountdownTimers.get(room.id);
     const fullLockTimer = this.roomFullLockTimers.get(room.id);
     if (room.aiLevel !== undefined) {
-      if (room.maxPlayers !== 2 || room.players.length !== 1 || !room.isLocked) {
+      if (room.maxPlayers !== 2 || room.players.length !== 1 || this.getHumanPlayerCount(room) !== 1 || !room.isLocked) {
         if (readyTimer) {
           clearTimeout(readyTimer);
           this.roomReadyCountdownTimers.delete(room.id);
@@ -2393,7 +2394,7 @@ export class CnCNetAutoHostBot {
     }
 
     const allReady = room.aiLevel !== undefined
-      ? room.skillLevel === 1 && room.maxPlayers === 2 && room.players.length === 1 && room.players.every((player) => player.isReady)
+      ? room.skillLevel === 1 && room.maxPlayers === 2 && room.players.length === 1 && this.getHumanPlayerCount(room) === 1 && room.players.every((player) => player.isReady)
       : this.getHumanPlayerCount(room) === room.maxPlayers && room.players.every((player) => player.isReady);
     if (!allReady) {
       if (readyTimer) {
@@ -2442,7 +2443,7 @@ export class CnCNetAutoHostBot {
       if (!activeRoom || activeRoom.status === 'PLAYING' || activeRoom.players.some((player) => player.isInGame)) return;
       if (
         (activeRoom.aiLevel !== undefined
-          ? activeRoom.skillLevel !== 1 || activeRoom.maxPlayers !== 2 || activeRoom.players.length !== 1 || !activeRoom.players.every((player) => player.isReady)
+          ? activeRoom.skillLevel !== 1 || activeRoom.maxPlayers !== 2 || activeRoom.players.length !== 1 || this.getHumanPlayerCount(activeRoom) !== 1 || !activeRoom.players.every((player) => player.isReady)
           : this.getHumanPlayerCount(activeRoom) !== activeRoom.maxPlayers || !activeRoom.players.every((player) => player.isReady)) ||
         !this.validateRoomFileHashes(activeRoom, false) ||
         !this.validateRoomMapCapacity(activeRoom, false) ||
