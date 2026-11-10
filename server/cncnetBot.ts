@@ -2299,7 +2299,7 @@ export class CnCNetAutoHostBot {
       }
 
       for (const player of [...room.players]) {
-        if (player.isReady) {
+        if (player.isReady || player.isInGame) {
           player.unreadySince = undefined;
           player.readyWarnedAt = undefined;
           continue;
