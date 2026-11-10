@@ -1359,6 +1359,15 @@ export class CnCNetAutoHostBot {
     return true;
   }
 
+  private validateRoomMapCapacity(room: HostedRoom, announce = true): boolean {
+    const mapMaxPlayers = this.getMapMaxPlayers(room.currentMap);
+    if (!mapMaxPlayers || this.getHumanPlayerCount(room) <= mapMaxPlayers) return true;
+    if (announce) {
+      this.sendRoomMessage(room, `[AUTO-HOST] ${room.currentMap} supports at most ${mapMaxPlayers} human players. Select a larger map before launching.`);
+    }
+    return false;
+  }
+
   private validateRoomPlayerOptions(room: HostedRoom, announce = true): boolean {
     const duplicateColors = room.players.some((player, index) =>
       (player.colorId || 0) > 0 &&
@@ -1410,6 +1419,9 @@ export class CnCNetAutoHostBot {
     }
     if (!this.validateRoomFileHashes(room)) {
       throw new Error('Every player must complete file verification and use matching RA1 game files before launch.');
+    }
+    if (!this.validateRoomMapCapacity(room)) {
+      throw new Error('The selected map does not support the current number of human players.');
     }
     if (!this.validateRoomPlayerOptions(room)) {
       throw new Error('Players must choose different colors before launch.');
@@ -2273,7 +2285,7 @@ export class CnCNetAutoHostBot {
       return;
     }
 
-    if (!this.validateRoomFileHashes(room) || !this.validateRoomPlayerOptions(room) || !this.validateRoomTeams(room)) {
+    if (!this.validateRoomFileHashes(room) || !this.validateRoomMapCapacity(room) || !this.validateRoomPlayerOptions(room) || !this.validateRoomTeams(room)) {
       if (readyTimer) {
         clearTimeout(readyTimer);
         this.roomReadyCountdownTimers.delete(room.id);
@@ -2314,6 +2326,7 @@ export class CnCNetAutoHostBot {
           ? activeRoom.skillLevel !== 1 || activeRoom.maxPlayers !== 2 || activeRoom.players.length !== 1 || !activeRoom.players.every((player) => player.isReady)
           : this.getHumanPlayerCount(activeRoom) !== activeRoom.maxPlayers || !activeRoom.players.every((player) => player.isReady)) ||
         !this.validateRoomFileHashes(activeRoom, false) ||
+        !this.validateRoomMapCapacity(activeRoom, false) ||
         !this.validateRoomPlayerOptions(activeRoom, false) ||
         !this.validateRoomTeams(activeRoom, false) ||
         (activeRoom.players.length > 1 && !activeRoom.players.every((player) =>
