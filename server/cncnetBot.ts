@@ -946,7 +946,7 @@ export class CnCNetAutoHostBot {
       }
       if (this.lobbyNamesSnapshot) {
         this.lobbyNamesDepartures.delete(oldKey);
-        this.lobbyNamesDepartures.add(newKey);
+        this.lobbyNamesDepartures.delete(newKey);
       }
       for (const snapshot of this.roomNamesSnapshots.values()) {
         if (snapshot.has(oldKey)) {
