@@ -87,6 +87,7 @@ export interface RoomPlayer {
   isInGame?: boolean;
   joinedAt: string;
   hostmask?: string;
+  mustSpectateBy?: number;
   votedMap?: string;
   wantsNextMap?: boolean;
   sideId?: number;
@@ -113,6 +114,7 @@ export interface HostedRoom {
   lobbyChannel: string;
   password?: string;
   maxPlayers: number;
+  maxSpectators?: number;
   skillLevel?: number;
   currentMap: string;
   mapPool: string[];
@@ -196,6 +198,12 @@ export class CnCNetAutoHostBot {
   // Active Hosted Rooms for RA1
   private rooms: Map<string, HostedRoom> = new Map();
   private readonly postLaunchRoomRotationMs = 30000;
+  private readonly spectatorSideId = Number.isFinite(Number(process.env.CNCNET_RA1_SPECTATOR_SIDE_ID))
+    ? Math.max(0, Math.floor(Number(process.env.CNCNET_RA1_SPECTATOR_SIDE_ID)))
+    : 11;
+  private readonly defaultMaxSpectators = Number.isFinite(Number(process.env.CNCNET_RA1_MAX_SPECTATORS))
+    ? Math.max(0, Math.min(4, Math.floor(Number(process.env.CNCNET_RA1_MAX_SPECTATORS))))
+    : 2;
   private roomRotationTimers: Map<string, NodeJS.Timeout> = new Map();
   private roomReadyCountdownTimers: Map<string, NodeJS.Timeout> = new Map();
   private roomFullLockTimers: Map<string, NodeJS.Timeout> = new Map();
@@ -671,7 +679,7 @@ export class CnCNetAutoHostBot {
               roomId: room.id,
               channel: room.channel,
             });
-            this.sendRaw(`MODE ${room.channel} +klnNs ${this.getRoomChannelKey(room)} ${room.maxPlayers + 1}`);
+            this.sendRaw(`MODE ${room.channel} +klnNs ${this.getRoomChannelKey(room)} ${this.getRoomCapacity(room) + 1}`);
             this.sendRoomTopic(room);
             this.broadcastGameAnnouncement(room);
           } else {
@@ -827,6 +835,22 @@ export class CnCNetAutoHostBot {
 
   // ======================== RA1 ROOM MANAGEMENT ========================
 
+  private isSpectator(player: RoomPlayer): boolean {
+    return player.sideId === this.spectatorSideId;
+  }
+
+  private getHumanPlayerCount(room: HostedRoom): number {
+    return room.players.filter((player) => !this.isSpectator(player)).length;
+  }
+
+  private getRoomCapacity(room: HostedRoom): number {
+    return room.maxPlayers + (room.maxSpectators ?? this.defaultMaxSpectators);
+  }
+
+  private isRoomFull(room: HostedRoom): boolean {
+    return this.getHumanPlayerCount(room) >= room.maxPlayers || room.players.length >= this.getRoomCapacity(room);
+  }
+
   public createRoom(options: Partial<HostedRoom>): HostedRoom {
     if (this.rooms.size > 0) throw new Error(`${this.currentNick} already has an active room. Close it before creating another.`);
     let channelName = options.channel;
@@ -863,6 +887,9 @@ export class CnCNetAutoHostBot {
       lobbyChannel: RA1_DEFINITION.lobbyChannel,
       password: options.password || undefined,
       maxPlayers: options.maxPlayers || RA1_DEFINITION.defaultMaxPlayers,
+      maxSpectators: options.maxSpectators === undefined
+        ? this.defaultMaxSpectators
+        : Math.max(0, Math.min(4, Math.floor(Number(options.maxSpectators) || 0))),
       skillLevel: Math.max(0, Math.min(3, Number(options.skillLevel) || 0)),
       currentMap: options.currentMap || RA1_DEFINITION.defaultMaps[0],
       mapPool: options.mapPool && options.mapPool.length > 0 ? options.mapPool : [...RA1_DEFINITION.defaultMaps],
@@ -950,6 +977,7 @@ export class CnCNetAutoHostBot {
       this.sendRoomMessage(room, `[MAP] Map changed to: ${room.currentMap}`);
     }
     if (updates.maxPlayers) room.maxPlayers = updates.maxPlayers;
+    if (updates.maxSpectators !== undefined) room.maxSpectators = Math.max(0, Math.min(4, Math.floor(Number(updates.maxSpectators) || 0)));
     if (updates.skillLevel !== undefined) room.skillLevel = Math.max(0, Math.min(3, Number(updates.skillLevel) || 0));
     if (updates.password !== undefined) room.password = updates.password || undefined;
 
@@ -979,8 +1007,8 @@ export class CnCNetAutoHostBot {
     if (this.state !== 'REGISTERED') throw new Error('Bot must be connected to CnCNet IRC before changing room modes.');
     if (room.status === 'PLAYING') throw new Error('A launched room cannot be unlocked or relocked.');
     if (room.isLocked === locked) return room;
-    if (room.isLocked && !locked && room.players.length >= room.maxPlayers) {
-      throw new Error(`Cannot unlock room because the player limit (${room.maxPlayers}) has been reached.`);
+    if (room.isLocked && !locked && this.isRoomFull(room)) {
+      throw new Error(`Cannot unlock room because the player or spectator capacity has been reached.`);
     }
 
     const mode = locked ? '+i' : '-i';
@@ -1003,8 +1031,8 @@ export class CnCNetAutoHostBot {
     if (!room.isLocked) throw new Error('Lock the room before launching it.');
     if (room.status === 'PLAYING') throw new Error('This room has already been launched.');
     const aiFallback = room.aiLevel !== undefined && room.skillLevel === 1 && room.maxPlayers === 2 && room.players.length === 1;
-    if (!aiFallback && room.players.length !== room.maxPlayers) {
-      throw new Error(`Room is not full (${room.players.length}/${room.maxPlayers}).`);
+    if (!aiFallback && this.getHumanPlayerCount(room) !== room.maxPlayers) {
+      throw new Error(`Room needs ${room.maxPlayers} human players before launch.`);
     }
     if (!room.players.length || !room.players.every((player) => player.isReady)) {
       throw new Error('Every human player must be ready before launch.');
@@ -1064,7 +1092,7 @@ export class CnCNetAutoHostBot {
   private sendRoomLobbySettings(room: HostedRoom) {
     const skillLevel = Math.max(0, Math.min(3, room.skillLevel ?? 0));
     const passwordFlag = room.password ? 1 : 0;
-    this.sendQueued(`NOTICE ${room.channel} :\x01GSETTINGS ${room.gameTitle};${room.maxPlayers};${skillLevel};${passwordFlag}\x01`, `GSETTINGS:${room.channel.toLowerCase()}`, 11);
+    this.sendQueued(`NOTICE ${room.channel} :\x01GSETTINGS ${room.gameTitle};${this.getRoomCapacity(room)};${skillLevel};${passwordFlag}\x01`, `GSETTINGS:${room.channel.toLowerCase()}`, 11);
   }
 
   private sendRoomPlayerExtraOptions(room: HostedRoom) {
@@ -1157,7 +1185,7 @@ export class CnCNetAutoHostBot {
     const fields = [
       protocolRevision,
       gameVersion,
-      String(room.maxPlayers),
+      String(this.getRoomCapacity(room)),
       room.channel,
       room.gameTitle,
       flags,
@@ -1202,8 +1230,8 @@ export class CnCNetAutoHostBot {
       return;
     }
 
-    if (room.players.length >= room.maxPlayers) {
-      this.sendRoomMessage(room, `[RA1 HOST] Room is full (${room.players.length}/${room.maxPlayers}).`);
+    if (room.players.length >= this.getRoomCapacity(room)) {
+      this.sendRoomMessage(room, `[RA1 HOST] Room is full (${room.players.length}/${this.getRoomCapacity(room)} including spectators).`);
       this.sendRaw(`KICK ${room.channel} ${nick} :Room is full`);
       return;
     }
@@ -1219,6 +1247,10 @@ export class CnCNetAutoHostBot {
     };
 
     room.players.push(player);
+    if (this.getHumanPlayerCount(room) > room.maxPlayers) {
+      player.mustSpectateBy = Date.now() + 30000;
+      this.sendRoomMessage(room, `[AUTO-HOST] Player slots are full. ${nick}, choose Spectator in the side list within 30 seconds or you will be removed.`);
+    }
     room.tunnelLaunchBlocked = false;
     for (const roomPlayer of room.players) {
       roomPlayer.tunnelNegotiationSuccesses = 0;
@@ -1402,11 +1434,24 @@ export class CnCNetAutoHostBot {
       if (!match) return;
       const packed = Number.parseInt(match[1], 10);
       if (!Number.isSafeInteger(packed)) return;
-      player.sideId = packed & 0xff;
+      const nextSideId = packed & 0xff;
+      if (nextSideId === this.spectatorSideId) {
+        const currentSpectators = room.players.filter((roomPlayer) => roomPlayer !== player && this.isSpectator(roomPlayer)).length;
+        if (currentSpectators >= (room.maxSpectators ?? this.defaultMaxSpectators)) {
+          this.sendRoomMessage(room, `[AUTO-HOST] No spectator slots are available for ${senderNick}.`);
+          return;
+        }
+        player.mustSpectateBy = undefined;
+      } else if (player.mustSpectateBy !== undefined || this.getHumanPlayerCount(room) >= room.maxPlayers) {
+        player.mustSpectateBy = this.getHumanPlayerCount(room) >= room.maxPlayers ? Date.now() + 30000 : undefined;
+      }
+      player.sideId = nextSideId;
       player.colorId = (packed >>> 8) & 0xff;
       player.startingLocation = (packed >>> 16) & 0xff;
       player.teamId = (packed >>> 24) & 0xff;
       this.sendRoomPlayerOptions(room);
+      this.broadcastGameAnnouncement(room);
+      this.evaluateRoomAutomation(room);
       return;
     }
 
@@ -1512,12 +1557,12 @@ export class CnCNetAutoHostBot {
   }
 
   private scheduleRoomTunnelRenegotiation(room: HostedRoom) {
-    if (room.status === 'PLAYING' || room.players.length !== room.maxPlayers || this.roomTunnelRenegotiationTimers.has(room.id)) return;
+    if (room.status === 'PLAYING' || !this.isRoomFull(room) || this.roomTunnelRenegotiationTimers.has(room.id)) return;
 
     const timer = setTimeout(() => {
       this.roomTunnelRenegotiationTimers.delete(room.id);
       const activeRoom = this.rooms.get(room.id);
-      if (!activeRoom || activeRoom.status === 'PLAYING' || activeRoom.players.length !== activeRoom.maxPlayers) return;
+      if (!activeRoom || activeRoom.status === 'PLAYING' || !this.isRoomFull(activeRoom)) return;
 
       const participants = activeRoom.players.map((player) => player.nick);
       if (participants.length < 2) return;
@@ -1569,7 +1614,7 @@ export class CnCNetAutoHostBot {
     for (const room of this.rooms.values()) {
       if (room.status === 'PLAYING') continue;
       const aiFallback = room.aiLevel !== undefined && room.skillLevel === 1 && room.maxPlayers === 2 && room.players.length === 1;
-      const roomIsFull = room.players.length === room.maxPlayers || aiFallback;
+      const roomIsFull = this.isRoomFull(room) || aiFallback;
       const tunnelsReady = room.players.length <= 1 || room.players.every((player) =>
         player.tunnelNegotiationReportReceived &&
         player.tunnelNegotiationReportedPeers === room.players.length - 1 &&
@@ -1675,7 +1720,7 @@ export class CnCNetAutoHostBot {
         }
         return;
       }
-    } else if (room.players.length < room.maxPlayers) {
+    } else if (this.getHumanPlayerCount(room) < room.maxPlayers && room.players.length < this.getRoomCapacity(room)) {
       if (readyTimer) {
         clearTimeout(readyTimer);
         this.roomReadyCountdownTimers.delete(room.id);
@@ -1693,11 +1738,11 @@ export class CnCNetAutoHostBot {
 
     if (!room.isLocked && this.state === 'REGISTERED') {
       if (!fullLockTimer) {
-        this.sendRoomMessage(room, `[AUTO-HOST] Room full (${room.players.length}/${room.maxPlayers})! Waiting 10 seconds for players to synchronize before locking.`);
+        this.sendRoomMessage(room, `[AUTO-HOST] Player slots or room capacity reached. Waiting 10 seconds for players to synchronize before locking.`);
         const timer = setTimeout(() => {
           this.roomFullLockTimers.delete(room.id);
           const activeRoom = this.rooms.get(room.id);
-          if (!activeRoom || activeRoom.status === 'PLAYING' || activeRoom.isLocked || activeRoom.players.length !== activeRoom.maxPlayers) return;
+          if (!activeRoom || activeRoom.status === 'PLAYING' || activeRoom.isLocked || !this.isRoomFull(activeRoom)) return;
           this.setRoomLocked(activeRoom.id, true);
           this.sendRoomMessage(activeRoom, '[AUTO-HOST] Room locked. Waiting for players to ready up in-game.');
           this.evaluateRoomAutomation(activeRoom);
@@ -1709,7 +1754,7 @@ export class CnCNetAutoHostBot {
 
     const allReady = room.aiLevel !== undefined
       ? room.skillLevel === 1 && room.maxPlayers === 2 && room.players.length === 1 && room.players.every((player) => player.isReady)
-      : room.players.length === room.maxPlayers && room.players.every((player) => player.isReady);
+      : this.getHumanPlayerCount(room) === room.maxPlayers && room.players.every((player) => player.isReady);
     if (!allReady) {
       if (readyTimer) {
         clearTimeout(readyTimer);
@@ -1746,7 +1791,7 @@ export class CnCNetAutoHostBot {
       if (
         (activeRoom.aiLevel !== undefined
           ? activeRoom.skillLevel !== 1 || activeRoom.maxPlayers !== 2 || activeRoom.players.length !== 1 || !activeRoom.players.every((player) => player.isReady)
-          : activeRoom.players.length !== activeRoom.maxPlayers || !activeRoom.players.every((player) => player.isReady)) ||
+          : this.getHumanPlayerCount(activeRoom) !== activeRoom.maxPlayers || !activeRoom.players.every((player) => player.isReady)) ||
         (activeRoom.players.length > 1 && !activeRoom.players.every((player) =>
           player.tunnelNegotiationReportReceived &&
           player.tunnelNegotiationReportedPeers === activeRoom.players.length - 1 &&
