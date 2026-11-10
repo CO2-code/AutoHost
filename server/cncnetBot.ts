@@ -1323,12 +1323,16 @@ export class CnCNetAutoHostBot {
     if (updates.gameTitle) room.gameTitle = updates.gameTitle;
     if (updates.currentMap && updates.currentMap !== room.currentMap) {
       const mapMaxPlayers = this.getMapMaxPlayers(updates.currentMap);
-      if (room.maxPlayers === 6 && room.configuredMaxPlayers === 4 && mapMaxPlayers !== undefined && mapMaxPlayers < 6) {
-        if (this.getHumanPlayerCount(room) > 4) {
-          throw new Error('The selected map only supports four players, but more than four players are currently in the room.');
+      if (mapMaxPlayers !== undefined && mapMaxPlayers < room.maxPlayers) {
+        if (room.maxPlayers === 6 && room.configuredMaxPlayers === 4 && mapMaxPlayers >= 4) {
+          if (this.getHumanPlayerCount(room) > 4) {
+            throw new Error('The selected map only supports four players, but more than four players are currently in the room.');
+          }
+          room.maxPlayers = 4;
+          this.sendRaw(`MODE ${room.channel} +l ${this.getRoomCapacity(room) + 1}`);
+        } else {
+          throw new Error(`The selected map supports at most ${mapMaxPlayers} players, fewer than this room's player limit.`);
         }
-        room.maxPlayers = 4;
-        this.sendRaw(`MODE ${room.channel} +l ${this.getRoomCapacity(room) + 1}`);
       }
       room.recentMaps ||= [];
       room.recentMaps.push(room.currentMap);
@@ -2478,22 +2482,31 @@ export class CnCNetAutoHostBot {
   }
 
   private selectNextRoomMap(room: HostedRoom): string | undefined {
+    const compatibleMaps = room.mapPool.filter((map) => {
+      const mapMaxPlayers = this.getMapMaxPlayers(map);
+      return mapMaxPlayers === undefined || mapMaxPlayers >= room.maxPlayers;
+    });
     const recent = new Set(room.recentMaps || []);
-    let choices = room.mapPool.filter((map) => map !== room.currentMap && !recent.has(map));
-    if (choices.length === 0) choices = room.mapPool.filter((map) => map !== room.currentMap);
+    let choices = compatibleMaps.filter((map) => map !== room.currentMap && !recent.has(map));
+    if (choices.length === 0) choices = compatibleMaps.filter((map) => map !== room.currentMap);
     return choices.length ? choices[Math.floor(Math.random() * choices.length)] : room.currentMap;
   }
 
   private applyRoomMapChange(room: HostedRoom, map: string, reason: string) {
     const mapMaxPlayers = this.getMapMaxPlayers(map);
-    if (room.maxPlayers === 6 && room.configuredMaxPlayers === 4 && mapMaxPlayers !== undefined && mapMaxPlayers < 6) {
-      if (this.getHumanPlayerCount(room) > 4) {
-        this.sendRoomMessage(room, '[MAP] This map only supports four players; the room cannot switch while more than four players are in the lobby.');
+    if (mapMaxPlayers !== undefined && mapMaxPlayers < room.maxPlayers) {
+      if (room.maxPlayers === 6 && room.configuredMaxPlayers === 4 && mapMaxPlayers >= 4) {
+        if (this.getHumanPlayerCount(room) > 4) {
+          this.sendRoomMessage(room, '[MAP] This map only supports four players; the room cannot switch while more than four players are in the lobby.');
+          return;
+        }
+        room.maxPlayers = 4;
+        this.sendRaw(`MODE ${room.channel} +l ${this.getRoomCapacity(room) + 1}`);
+        this.sendRoomLobbySettings(room);
+      } else {
+        this.sendRoomMessage(room, `[MAP] ${map} supports at most ${mapMaxPlayers} players. It cannot be selected for this room size.`);
         return;
       }
-      room.maxPlayers = 4;
-      this.sendRaw(`MODE ${room.channel} +l ${this.getRoomCapacity(room) + 1}`);
-      this.sendRoomLobbySettings(room);
     }
     if (room.currentMap && room.currentMap !== map) {
       room.recentMaps ||= [];
