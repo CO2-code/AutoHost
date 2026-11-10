@@ -190,6 +190,8 @@ export class CnCNetAutoHostBot {
   private sendQueue: Array<{ command: string; key?: string; priority: number }> = [];
   private sendTimer: NodeJS.Timeout | null = null;
   private readonly sendIntervalMs = 200;
+  private readonly sendFloodBurstMs = 8000;
+  private sendFloodBudgetUntil = 0;
 
   // Active Hosted Rooms for RA1
   private rooms: Map<string, HostedRoom> = new Map();
@@ -499,8 +501,18 @@ export class CnCNetAutoHostBot {
       return;
     }
 
-    const next = this.sendQueue.shift();
-    if (next) this.sendRaw(next.command);
+    const next = this.sendQueue[0];
+    if (next) {
+      const now = Date.now();
+      const cost = (2 + Buffer.byteLength(next.command + '\r\n', 'utf8') / 120) * 1000;
+      const waitMs = Math.max(this.sendFloodBudgetUntil, now) + cost - now - this.sendFloodBurstMs;
+      if (waitMs > 0) {
+        this.sendTimer = setTimeout(() => this.processSendQueue(), Math.max(20, Math.ceil(waitMs)));
+        return;
+      }
+      this.sendQueue.shift();
+      this.sendRaw(next.command);
+    }
 
     if (this.sendQueue.length > 0) {
       this.sendTimer = setTimeout(() => this.processSendQueue(), this.sendIntervalMs);
@@ -519,6 +531,9 @@ export class CnCNetAutoHostBot {
 
   public sendRaw(command: string) {
     if (this.socket && !this.socket.destroyed && this.socket.writable) {
+      const now = Date.now();
+      const cost = (2 + Buffer.byteLength(command + '\r\n', 'utf8') / 120) * 1000;
+      this.sendFloodBudgetUntil = Math.max(this.sendFloodBudgetUntil, now) + cost;
       this.socket.write(command + '\r\n');
       this.logActivity('OUTGOING', command);
     } else {
@@ -528,6 +543,7 @@ export class CnCNetAutoHostBot {
   private onConnected() {
     this.state = 'CONNECTED';
     this.connectedSince = new Date();
+    this.sendFloodBudgetUntil = Date.now();
     this.reconnectAttempts = 0;
     this.logHosting('SYSTEM', `Connected to CnCNet server! Registering nick '${this.currentNick}' for RA1...`);
 
@@ -1992,6 +2008,7 @@ export class CnCNetAutoHostBot {
       this.sendTimer = null;
     }
     this.sendQueue = [];
+    this.sendFloodBudgetUntil = Date.now();
 
     this.state = 'DISCONNECTED';
     this.connectedSince = null;
