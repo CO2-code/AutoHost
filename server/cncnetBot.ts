@@ -394,6 +394,8 @@ export class CnCNetAutoHostBot {
     return this.matchHistory.slice(-Math.max(1, limit)).reverse().map((entry) => ({
       ...entry,
       players: [...entry.players],
+      spectators: entry.spectators ? [...entry.spectators] : undefined,
+      endPlayers: entry.endPlayers ? [...entry.endPlayers] : undefined,
     }));
   }
 
