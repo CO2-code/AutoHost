@@ -1220,6 +1220,10 @@ export class CnCNetAutoHostBot {
       if (announce && !room.fileHashLaunchBlocked) {
         room.fileHashLaunchBlocked = true;
         this.sendRoomMessage(room, `[AUTO-HOST] Waiting for RA1 file verification from: ${missing.map((player) => player.nick).join(', ')}.`);
+        for (const player of missing) {
+          const playerIndex = room.players.indexOf(player);
+          if (playerIndex >= 0) this.sendRaw(`NOTICE ${room.channel} :\x01NVRFY ${playerIndex}\x01`);
+        }
       }
       return false;
     }
@@ -1480,6 +1484,8 @@ export class CnCNetAutoHostBot {
     };
 
     room.players.push(player);
+    room.fileHashLaunchBlocked = false;
+    room.fileHashMismatchReported = undefined;
     room.lastActivityAt = new Date().toISOString();
     if (this.getHumanPlayerCount(room) > room.maxPlayers) {
       player.mustSpectateBy = Date.now() + 30000;
