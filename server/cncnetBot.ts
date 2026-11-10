@@ -2831,21 +2831,7 @@ export class CnCNetAutoHostBot {
     switch (cmd) {
       case '!ready':
       case '!r': {
-        player.isReady = true;
-        player.unreadySince = undefined;
-        player.readyWarnedAt = undefined;
-        const readyCount = room.players.filter((p) => p.isReady).length;
-        this.sendRoomMessage(room, `[READY] ${senderNick} is READY! (${readyCount}/${room.players.length} ready)`);
-
-        this.logHosting('PLAYER_READY', `Player '${senderNick}' marked ready in ${room.channel}`, {
-          roomId: room.id,
-          channel: room.channel,
-          nick: senderNick,
-        });
-
-        this.broadcastGameAnnouncement(room);
-        this.sendRoomPlayerOptions(room);
-        this.evaluateRoomAutomation(room);
+        this.sendRoomMessage(room, `[READY] ${senderNick}, use the in-game Ready button. Chat commands cannot mark players ready.`);
         break;
       }
 
