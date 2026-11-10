@@ -2195,6 +2195,20 @@ export class CnCNetAutoHostBot {
       : '');
   }
 
+  private hasExplicitMapSha1(mapName: string): boolean {
+    if (KNOWN_MAP_SHA1S[mapName]) return true;
+    const configuredMapName = process.env.CNCNET_RA1_MAP_NAME?.trim();
+    const configuredMapSha1 = process.env.CNCNET_RA1_MAP_SHA1?.trim();
+    if (configuredMapName === mapName && configuredMapSha1 && /^[a-f0-9]{40}$/i.test(configuredMapSha1)) return true;
+    try {
+      const configuredHashes = JSON.parse(process.env.CNCNET_RA1_MAP_HASHES || '{}') as Record<string, unknown>;
+      const configuredHash = configuredHashes[mapName];
+      return typeof configuredHash === 'string' && /^[a-f0-9]{40}$/i.test(configuredHash.trim());
+    } catch {
+      return false;
+    }
+  }
+
   private getMapMaxPlayers(mapName: string): number | undefined {
     const match = mapName.match(/^\[(\d+)\]/);
     return match ? Number(match[1]) : undefined;
@@ -2217,7 +2231,7 @@ export class CnCNetAutoHostBot {
       const compatibleMaps = (exactMaps.length
         ? exactMaps
         : room.mapPool.filter((map) => (this.getMapMaxPlayers(map) || 0) >= desiredMaxPlayers))
-        .filter((map) => this.getMapSha1(map).length > 0);
+        .filter((map) => this.hasExplicitMapSha1(map));
       if (desiredMaxPlayers === 6 && compatibleMaps.length === 0) continue;
       let selectedMap = room.currentMap;
       if (this.getMapMaxPlayers(selectedMap) !== desiredMaxPlayers && compatibleMaps.length > 0) {
