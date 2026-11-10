@@ -97,7 +97,6 @@ export interface RoomPlayer {
   tunnelNegotiationFailures?: number;
   tunnelNegotiationReportedPeers?: number;
   tunnelNegotiationReportReceived?: boolean;
-  tunnelLaunchBlocked?: boolean;
 }
 
 export interface HostedRoom {
@@ -125,6 +124,7 @@ export interface HostedRoom {
   status: 'WAITING' | 'PLAYING';
   isLocked: boolean;
   aiLevel?: number;
+  tunnelLaunchBlocked?: boolean;
   players: RoomPlayer[];
   mapVotes: Record<string, number>;
   createdAt: string;
