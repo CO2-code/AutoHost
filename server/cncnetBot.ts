@@ -1943,11 +1943,16 @@ export class CnCNetAutoHostBot {
         const currentSpectators = room.players.filter((roomPlayer) => roomPlayer !== player && this.isSpectator(roomPlayer)).length;
         if (currentSpectators >= (room.maxSpectators ?? this.defaultMaxSpectators)) {
           this.sendRoomMessage(room, `[AUTO-HOST] No spectator slots are available for ${senderNick}.`);
+          this.sendRoomPlayerOptions(room);
           return;
         }
         player.mustSpectateBy = undefined;
       } else if (player.mustSpectateBy !== undefined || this.getHumanPlayerCount(room) >= room.maxPlayers) {
-        player.mustSpectateBy = this.getHumanPlayerCount(room) >= room.maxPlayers ? Date.now() + 30000 : undefined;
+        if (this.getHumanPlayerCount(room) >= room.maxPlayers) {
+          player.mustSpectateBy ??= Date.now() + 30000;
+        } else {
+          player.mustSpectateBy = undefined;
+        }
       }
       player.sideId = nextSideId;
       player.colorId = nextColorId;
