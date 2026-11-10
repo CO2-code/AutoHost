@@ -978,6 +978,10 @@ export class CnCNetAutoHostBot {
     }
     if (updates.maxPlayers) room.maxPlayers = updates.maxPlayers;
     if (updates.maxSpectators !== undefined) room.maxSpectators = Math.max(0, Math.min(4, Math.floor(Number(updates.maxSpectators) || 0)));
+    if (updates.maxPlayers !== undefined || updates.maxSpectators !== undefined) {
+      this.sendRaw(`MODE ${room.channel} +l ${this.getRoomCapacity(room) + 1}`);
+      this.evaluateRoomAutomation(room);
+    }
     if (updates.skillLevel !== undefined) room.skillLevel = Math.max(0, Math.min(3, Number(updates.skillLevel) || 0));
     if (updates.password !== undefined) room.password = updates.password || undefined;
 
@@ -1609,10 +1613,21 @@ export class CnCNetAutoHostBot {
   }
 
   private checkUnreadyPlayers() {
-    if (this.state !== 'REGISTERED' || this.kickUnreadyMs <= 0) return;
+    if (this.state !== 'REGISTERED') return;
     const now = Date.now();
     for (const room of this.rooms.values()) {
       if (room.status === 'PLAYING') continue;
+      for (const player of [...room.players]) {
+        if (player.mustSpectateBy === undefined || this.isSpectator(player) || now < player.mustSpectateBy) continue;
+        if (this.getHumanPlayerCount(room) <= room.maxPlayers) {
+          player.mustSpectateBy = undefined;
+          continue;
+        }
+        this.sendRoomMessage(room, `[AUTO-HOST] ${player.nick} was removed for not selecting Spectator while player slots were full.`);
+        this.sendRaw(`KICK ${room.channel} ${player.nick} :Player slots full; choose Spectator`);
+        this.handlePlayerLeave(room, player.nick, 'kicked (no spectator choice)');
+      }
+
       const aiFallback = room.aiLevel !== undefined && room.skillLevel === 1 && room.maxPlayers === 2 && room.players.length === 1;
       const roomIsFull = this.isRoomFull(room) || aiFallback;
       const tunnelsReady = room.players.length <= 1 || room.players.every((player) =>
@@ -1620,7 +1635,7 @@ export class CnCNetAutoHostBot {
         player.tunnelNegotiationReportedPeers === room.players.length - 1 &&
         player.tunnelNegotiationSuccesses === room.players.length - 1
       );
-      if (!roomIsFull || !tunnelsReady) {
+      if (!roomIsFull || !tunnelsReady || this.kickUnreadyMs <= 0) {
         for (const player of room.players) {
           player.unreadySince = undefined;
           player.readyWarnedAt = undefined;
